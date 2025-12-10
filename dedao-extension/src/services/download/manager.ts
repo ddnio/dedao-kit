@@ -9,18 +9,25 @@ import { sanitizeId, escapeXml, calculateProgress } from '../epub/utils.ts';
 import { logger } from '../../utils/logger.ts';
 
 export class DownloadManager {
-    private converter = new ComplexSvgConverter();
+    private converter: ComplexSvgConverter;
     private generator = new EpubGenerator();
     private imageCounter = 0; // New counter for sequential image naming
+    private footnoteCounter = 0; // Counter for sequential footnote IDs
     private urlToIdMap = new Map<string, { id: string, href: string }>(); // Cache for image deduplication
 
+    constructor() {
+        // Pass footnote counter getter to converter
+        this.converter = new ComplexSvgConverter(() => this.footnoteCounter++);
+    }
+
     async startDownload(
-        bookId: string, 
-        enid: string, 
+        bookId: string,
+        enid: string,
         onProgress?: (info: ProgressInfo) => void
     ): Promise<Blob> {
         // Reset state for new download
         this.imageCounter = 0;
+        this.footnoteCounter = 0;
         this.urlToIdMap.clear();
 
         const task: DownloadTask = {
@@ -71,7 +78,8 @@ export class DownloadManager {
             const coverUrl = detail.cover || bookInfo.coverUrl;  // cover from detail or bookInfo
             if (coverUrl) {
                 try {
-                    let coverInfo = this.urlToIdMap.get(coverUrl);
+                    const normalizedCoverUrl = this.normalizeUrl(coverUrl);
+                    let coverInfo = this.urlToIdMap.get(normalizedCoverUrl);
                     let coverBlob: Blob | null = null;
 
                     if (!coverInfo) {
@@ -90,7 +98,7 @@ export class DownloadManager {
                             this.imageCounter = 0; 
                             
                             coverInfo = { id: coverImageId, href: `images/${coverImageFilename}` };
-                            this.urlToIdMap.set(coverUrl, coverInfo);
+                            this.urlToIdMap.set(normalizedCoverUrl, coverInfo);
 
                             pkg.resources.push({
                                 id: coverInfo.id,
@@ -149,92 +157,18 @@ export class DownloadManager {
             pkg.toc = this.buildNavPoints(bookInfo.toc || []);
 
             // Add CSS with font definitions (external CSS to reduce file size)
-            const cssContent = `/* Zhuangzi eBook CSS */
-
-/* Font definitions */
-@font-face { font-family: "FZFangSong-Z02"; src: local("FZFangSong-Z02"), url("https://imgcdn.umiwi.com/ttf/fangzhengfangsong_gbk.ttf"); }
-@font-face { font-family: "FZKai-Z03"; src: local("FZKai-Z03"), url("https://imgcdn.umiwi.com/ttf/fangzhengkaiti_gbk.ttf"); }
-@font-face { font-family: "DeDaoJinKai"; src: local("DeDaoJinKai"), url("https://imgcdn.umiwi.com/ttf/dedaojinkaiw03.ttf"); }
-@font-face { font-family: "Source Code Pro"; src: local("Source Code Pro"), url("https://imgcdn.umiwi.com/ttf/0315911806889993935644188722660020367983.ttf"); }
-
-/* Body and text styles */
-body {
-    font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
-    line-height: 1.6;
-    margin: 0;
-    padding: 0 1em;
-    color: #333;
+            // Minimal CSS from Reference to avoid style conflicts and file bloat
+            const cssContent = `body {
+  background-color: #FFFFFF;
+  margin-bottom: 0px;
+  margin-left: 0px;
+  margin-right: 0px;
+  margin-top: 0px;
+  text-align: center;
 }
-
-h1, h2, h3, h4, h5, h6 {
-    margin-top: 1em;
-    margin-bottom: 0.5em;
-    font-weight: bold;
-}
-
-p {
-    text-indent: 2em;
-    margin-bottom: 1em;
-    text-align: justify;
-}
-
-/* Image styles */
 img {
-    max-width: 100%;
-    height: auto;
-    display: block;
-    margin: 1em auto;
-    page-break-inside: avoid;
-}
-
-.image-wrapper {
-    text-align: center;
-}
-
-/* Footnote styles */
-sup {
-    font-size: 0.8em;
-    vertical-align: super;
-}
-
-.duokan-footnote {
-    font-size: 0.8em;
-}
-
-img.epub-footnote {
-    display: inline;
-    margin-right: 5px;
-    font-size: 12px;
-    width: 10px;
-    height: 10px;
-}
-
-aside[epub:type="footnote"] {
-    font-size: 0.9em;
-    margin: 1em 0;
-    padding: 0.5em 1em;
-    border-left: 2px solid #ccc;
-}
-
-.duokan-footnote-content {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-}
-
-/* Table styles */
-table, tr, td, th, tbody, thead, tfoot {
-    page-break-inside: avoid !important;
-}
-
-/* Links */
-a {
-    color: #0066cc;
-    text-decoration: none;
-}
-
-a:visited {
-    color: #800080;
+  max-height: 100%;
+  max-width: 100%;
 }
 `;
             // Resource href is now css/cover.css to match new structure
@@ -255,9 +189,18 @@ a:visited {
                 // Fetch pages
                 const pagesResponse = await this.fetchAllPages(chapter.id, token);
                 
-                                // Process content
+                // Determine header level (Go matches 'header' + level)
+                // If level is missing, default to 1. Go might use 0 for intro?
+                // Ref Chapter_1_1 (Intro) uses header0. Ref Chapter_1_1_0001 (Article) uses header1.
+                // Assuming chapter.level maps to this.
+                const headerClass = `header${chapter.level !== undefined ? chapter.level : 1}`;
+
+                // Process content
                 // Note: CSS link uses relative path - XHTML files are in EPUB/xhtml/, CSS is at EPUB/css/cover.css
                 // So we need ../css/cover.css to go up one level then into css
+                // Split title into individual characters and wrap each in <b> tags
+                const titleChars = chapter.title.split('').map(char => `<b>${escapeXml(char)}</b>`).join('');
+
                 let chapterHtml = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
@@ -268,7 +211,7 @@ a:visited {
 <body>
 
 <div id="${sanitizeId(chapter.id)}">
-</div><div class="header1"><h2><span style="font-size:19px;font-weight: bold;color:rgb(0, 0, 0);font-family:'PingFang SC';display: block;text-align:center;"><b>${escapeXml(chapter.title)}</b></span></h2></div>
+</div><div class="${headerClass}"><h2><span style="font-size:19px;font-weight: bold;color:rgb(0, 0, 0);font-family:'PingFang SC';display: block;text-align:center;">${titleChars}</span></h2></div>
 <div class="part">`;
                                 
                                 for (const page of pagesResponse) {                
@@ -281,37 +224,64 @@ a:visited {
                                                         // Download and deduplicate images, then replace placeholders in the HTML fragment
                                                         for (const imgUrl of remoteImageUrls) {
                                                             try {
-                                                                let imgInfo = this.urlToIdMap.get(imgUrl);
+                                                                const normalizedImgUrl = this.normalizeUrl(imgUrl);
+                                                                let imgInfo = this.urlToIdMap.get(normalizedImgUrl);
                                     
                                                                 if (!imgInfo) {
-                                                                    // New image, download it
-                                                                    const imgBlob = await this.downloadImage(imgUrl);
-                                                                    if (imgBlob) {
-                                                                        let imgExt = (imgBlob.type && imgBlob.type.split('/')[1]) || 'jpg';
-                                if (imgExt === 'svg+xml') imgExt = 'svg';
-                                                                        
-                                                                        // imageCounter will be the current count, imgId will be based on that.
-                                                                        // Then increment imageCounter for the next unique image.
-                                                                        const currentImageIndex = this.imageCounter;
-                                                                        this.imageCounter++; // Increment for the next unique image
+                                                                    // Check if it matches cover (even if not in map yet due to some reason, or to double check)
+                                                                    const normalizedCoverUrl = this.normalizeUrl(coverUrl || '');
+                                                                    if (coverUrl && normalizedImgUrl === normalizedCoverUrl) {
+                                                                         // It is the cover
+                                                                         // Assuming cover was processed and is 'images/cover.jpeg' (or ext)
+                                                                         // We need to know the cover filename/ext used earlier.
+                                                                         // But we can check if urlToIdMap has it? We just checked !imgInfo.
+                                                                         // If it's not in map, maybe cover wasn't added correctly?
+                                                                         // Or maybe coverUrl changed?
+                                                                         // If we find it, treat as cover.
+                                                                         // Recover cover extension from url or default
+                                                                         let ext = 'jpg';
+                                                                         if (imgUrl.includes('.png')) ext = 'png';
+                                                                         else if (imgUrl.includes('.jpeg') || imgUrl.includes('.jpg')) ext = 'jpeg';
+                                                                         
+                                                                         const coverFilename = `cover.${ext}`; // Approximation
+                                                                         // Ideally we used the one from the start.
+                                                                         
+                                                                         // If we are here, it means we missed the cache hit. 
+                                                                         // Let's force add to map if it matches cover logic
+                                                                         imgInfo = { id: 'cover-image', href: `images/${coverFilename}` };
+                                                                         this.urlToIdMap.set(normalizedImgUrl, imgInfo);
+                                                                    } else {
+                                                                        // New image, download it
+                                                                        const imgBlob = await this.downloadImage(imgUrl);
+                                                                        if (imgBlob) {
+                                                                            let imgExt = (imgBlob.type && imgBlob.type.split('/')[1]) || 'jpg';
+                                    if (imgExt === 'svg+xml') imgExt = 'svg';
                                     
-                                                                        const imgFilename = `image_${String(currentImageIndex).padStart(3, '0')}.${imgExt}`;
-                                                                        const imgId = `image_${String(currentImageIndex).padStart(3, '0')}`;
-                                                                        
-                                                                        imgInfo = { id: imgId, href: `images/${imgFilename}` };
-                                                                        this.urlToIdMap.set(imgUrl, imgInfo);
-                                    
-                                                                        pkg.resources.push({
-                                                                            id: imgInfo.id,
-                                                                            href: imgInfo.href,
-                                                                            mediaType: imgBlob.type || 'image/jpeg',
-                                                                            content: imgBlob
-                                                                        });
-                                                                        pkg.manifest.push({
-                                                                            id: imgInfo.id,
-                                                                            href: imgInfo.href,
-                                                                            mediaType: imgBlob.type || 'image/jpeg'
-                                                                        });
+                                                                            // Double check against cover AGAIN with blob type? No.
+                                                                            
+                                                                            // imageCounter will be the current count, imgId will be based on that.
+                                                                            // Then increment imageCounter for the next unique image.
+                                                                            const currentImageIndex = this.imageCounter;
+                                                                            this.imageCounter++; // Increment for the next unique image
+                                        
+                                                                            const imgFilename = `image_${String(currentImageIndex).padStart(3, '0')}.${imgExt}`;
+                                                                            const imgId = `image_${String(currentImageIndex).padStart(3, '0')}`;
+                                                                            
+                                                                            imgInfo = { id: imgId, href: `images/${imgFilename}` };
+                                                                            this.urlToIdMap.set(normalizedImgUrl, imgInfo);
+                                        
+                                                                            pkg.resources.push({
+                                                                                id: imgInfo.id,
+                                                                                href: imgInfo.href,
+                                                                                mediaType: imgBlob.type || 'image/jpeg',
+                                                                                content: imgBlob
+                                                                            });
+                                                                            pkg.manifest.push({
+                                                                                id: imgInfo.id,
+                                                                                href: imgInfo.href,
+                                                                                mediaType: imgBlob.type || 'image/jpeg'
+                                                                            });
+                                                                        }
                                                                     }
                                                                 }
                                     
@@ -464,5 +434,16 @@ a:visited {
 
     private escapeRegExp(string: string): string {
         return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
+    }
+
+    private normalizeUrl(url: string): string {
+        try {
+            // Remove query parameters to deduplicate images (e.g. tokens)
+            // dedao image urls: https://.../image.png?token=...
+            const u = new URL(url);
+            return `${u.origin}${u.pathname}`;
+        } catch (e) {
+            return url;
+        }
     }
 }

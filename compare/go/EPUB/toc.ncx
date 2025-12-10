@@ -1,0 +1,236 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+  <head>
+    <meta name="dtb:depth" content="urn:uuid:7d520957-73d3-413c-b910-e66763239f4d"></meta>
+  </head>
+  <docTitle>
+    <text>131902_庄子_庄子 著；孙雍长 译注</text>
+  </docTitle>
+  <docAuthor>
+    <text></text>
+  </docAuthor>
+  <navMap>
+    <navPoint id="navPoint-1">
+      <navLabel>
+        <text>版权信息</text>
+      </navLabel>
+      <content src="xhtml/Copyright.xhtml"></content>
+    </navPoint>
+    <navPoint id="navPoint-2">
+      <navLabel>
+        <text>内篇</text>
+      </navLabel>
+      <content src="xhtml/Chapter_1_1"></content>
+    </navPoint>
+    <navPoint id="navPoint-3">
+      <navLabel>
+        <text>逍遥游</text>
+      </navLabel>
+      <content src="xhtml/Chapter_1_1_0001.xhtml"></content>
+    </navPoint>
+    <navPoint id="navPoint-4">
+      <navLabel>
+        <text>齐物论</text>
+      </navLabel>
+      <content src="xhtml/Chapter_1_2"></content>
+    </navPoint>
+    <navPoint id="navPoint-5">
+      <navLabel>
+        <text>养生主</text>
+      </navLabel>
+      <content src="xhtml/Chapter_1_3"></content>
+    </navPoint>
+    <navPoint id="navPoint-6">
+      <navLabel>
+        <text>人间世</text>
+      </navLabel>
+      <content src="xhtml/Chapter_1_4"></content>
+    </navPoint>
+    <navPoint id="navPoint-7">
+      <navLabel>
+        <text>德充符</text>
+      </navLabel>
+      <content src="xhtml/Chapter_1_5"></content>
+    </navPoint>
+    <navPoint id="navPoint-8">
+      <navLabel>
+        <text>大宗师</text>
+      </navLabel>
+      <content src="xhtml/Chapter_1_6"></content>
+    </navPoint>
+    <navPoint id="navPoint-9">
+      <navLabel>
+        <text>应帝王</text>
+      </navLabel>
+      <content src="xhtml/Chapter_1_7"></content>
+    </navPoint>
+    <navPoint id="navPoint-10">
+      <navLabel>
+        <text>外篇</text>
+      </navLabel>
+      <content src="xhtml/Chapter_2_1"></content>
+    </navPoint>
+    <navPoint id="navPoint-11">
+      <navLabel>
+        <text>骈拇</text>
+      </navLabel>
+      <content src="xhtml/Chapter_2_1_0001.xhtml"></content>
+    </navPoint>
+    <navPoint id="navPoint-12">
+      <navLabel>
+        <text>马蹄</text>
+      </navLabel>
+      <content src="xhtml/Chapter_2_2"></content>
+    </navPoint>
+    <navPoint id="navPoint-13">
+      <navLabel>
+        <text>□箧</text>
+      </navLabel>
+      <content src="xhtml/Chapter_2_3"></content>
+    </navPoint>
+    <navPoint id="navPoint-14">
+      <navLabel>
+        <text>在宥</text>
+      </navLabel>
+      <content src="xhtml/Chapter_2_4"></content>
+    </navPoint>
+    <navPoint id="navPoint-15">
+      <navLabel>
+        <text>天地</text>
+      </navLabel>
+      <content src="xhtml/Chapter_2_5"></content>
+    </navPoint>
+    <navPoint id="navPoint-16">
+      <navLabel>
+        <text>天道</text>
+      </navLabel>
+      <content src="xhtml/Chapter_2_6"></content>
+    </navPoint>
+    <navPoint id="navPoint-17">
+      <navLabel>
+        <text>天运</text>
+      </navLabel>
+      <content src="xhtml/Chapter_2_7"></content>
+    </navPoint>
+    <navPoint id="navPoint-18">
+      <navLabel>
+        <text>刻意</text>
+      </navLabel>
+      <content src="xhtml/Chapter_2_8"></content>
+    </navPoint>
+    <navPoint id="navPoint-19">
+      <navLabel>
+        <text>缮性</text>
+      </navLabel>
+      <content src="xhtml/Chapter_2_9"></content>
+    </navPoint>
+    <navPoint id="navPoint-20">
+      <navLabel>
+        <text>秋水</text>
+      </navLabel>
+      <content src="xhtml/Chapter_2_10"></content>
+    </navPoint>
+    <navPoint id="navPoint-21">
+      <navLabel>
+        <text>至乐</text>
+      </navLabel>
+      <content src="xhtml/Chapter_2_11"></content>
+    </navPoint>
+    <navPoint id="navPoint-22">
+      <navLabel>
+        <text>达生</text>
+      </navLabel>
+      <content src="xhtml/Chapter_2_12"></content>
+    </navPoint>
+    <navPoint id="navPoint-23">
+      <navLabel>
+        <text>山木</text>
+      </navLabel>
+      <content src="xhtml/Chapter_2_13"></content>
+    </navPoint>
+    <navPoint id="navPoint-24">
+      <navLabel>
+        <text>田子方</text>
+      </navLabel>
+      <content src="xhtml/Chapter_2_14"></content>
+    </navPoint>
+    <navPoint id="navPoint-25">
+      <navLabel>
+        <text>知北游</text>
+      </navLabel>
+      <content src="xhtml/Chapter_2_15"></content>
+    </navPoint>
+    <navPoint id="navPoint-26">
+      <navLabel>
+        <text>杂篇</text>
+      </navLabel>
+      <content src="xhtml/Chapter_3_1"></content>
+    </navPoint>
+    <navPoint id="navPoint-27">
+      <navLabel>
+        <text>庚桑楚</text>
+      </navLabel>
+      <content src="xhtml/Chapter_3_1_0001.xhtml"></content>
+    </navPoint>
+    <navPoint id="navPoint-28">
+      <navLabel>
+        <text>徐无鬼</text>
+      </navLabel>
+      <content src="xhtml/Chapter_3_2"></content>
+    </navPoint>
+    <navPoint id="navPoint-29">
+      <navLabel>
+        <text>则阳</text>
+      </navLabel>
+      <content src="xhtml/Chapter_3_3"></content>
+    </navPoint>
+    <navPoint id="navPoint-30">
+      <navLabel>
+        <text>外物</text>
+      </navLabel>
+      <content src="xhtml/Chapter_3_4"></content>
+    </navPoint>
+    <navPoint id="navPoint-31">
+      <navLabel>
+        <text>寓言</text>
+      </navLabel>
+      <content src="xhtml/Chapter_3_5"></content>
+    </navPoint>
+    <navPoint id="navPoint-32">
+      <navLabel>
+        <text>让王</text>
+      </navLabel>
+      <content src="xhtml/Chapter_3_6"></content>
+    </navPoint>
+    <navPoint id="navPoint-33">
+      <navLabel>
+        <text>盗跖</text>
+      </navLabel>
+      <content src="xhtml/Chapter_3_7"></content>
+    </navPoint>
+    <navPoint id="navPoint-34">
+      <navLabel>
+        <text>说剑</text>
+      </navLabel>
+      <content src="xhtml/Chapter_3_8"></content>
+    </navPoint>
+    <navPoint id="navPoint-35">
+      <navLabel>
+        <text>渔父</text>
+      </navLabel>
+      <content src="xhtml/Chapter_3_9"></content>
+    </navPoint>
+    <navPoint id="navPoint-36">
+      <navLabel>
+        <text>列御寇</text>
+      </navLabel>
+      <content src="xhtml/Chapter_3_10"></content>
+    </navPoint>
+    <navPoint id="navPoint-37">
+      <navLabel>
+        <text>天下</text>
+      </navLabel>
+      <content src="xhtml/Chapter_3_11"></content>
+    </navPoint>
+  </navMap>
+</ncx>

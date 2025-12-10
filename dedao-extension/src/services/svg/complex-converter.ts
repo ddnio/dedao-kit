@@ -39,9 +39,12 @@ const REQ_EBOOK_PAGE_WIDTH = 60000;
 
 export class ComplexSvgConverter {
     private domParser: DOMParser;
+    private footnoteCounter: number = 0;
+    private getNextFootnoteNum?: () => number;
 
-    constructor() {
+    constructor(getNextFootnoteNum?: () => number) {
         this.domParser = new DOMParser();
+        this.getNextFootnoteNum = getNextFootnoteNum;
     }
 
     convert(svgString: string, chapterId: string): ConvertedPage {
@@ -280,7 +283,9 @@ export class ComplexSvgConverter {
                         imgTagContent += ' />';
 
                         if (isFootnoteIcon) { // Use size check for footnote logic in generation too
-                            const footnoteId = `footnote-${chapterId}-${i}-${Math.floor(Math.random() * 1000000)}`; 
+                            // Use simple sequential footnote IDs like Go does: footnote-3-<num>
+                            const footnoteNum = this.getNextFootnoteNum ? this.getNextFootnoteNum() : this.footnoteCounter++;
+                            const footnoteId = `footnote-3-${footnoteNum}`;
                             const footnoteText = this.escapeHtml(item.alt);
                             footnotes.push({ id: footnoteId, text: footnoteText });
 

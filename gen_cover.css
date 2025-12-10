@@ -1,0 +1,87 @@
+/* Zhuangzi eBook CSS */
+
+/* Font definitions */
+@font-face { font-family: "FZFangSong-Z02"; src: local("FZFangSong-Z02"), url("https://imgcdn.umiwi.com/ttf/fangzhengfangsong_gbk.ttf"); }
+@font-face { font-family: "FZKai-Z03"; src: local("FZKai-Z03"), url("https://imgcdn.umiwi.com/ttf/fangzhengkaiti_gbk.ttf"); }
+@font-face { font-family: "DeDaoJinKai"; src: local("DeDaoJinKai"), url("https://imgcdn.umiwi.com/ttf/dedaojinkaiw03.ttf"); }
+@font-face { font-family: "Source Code Pro"; src: local("Source Code Pro"), url("https://imgcdn.umiwi.com/ttf/0315911806889993935644188722660020367983.ttf"); }
+
+/* Body and text styles */
+body {
+    font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+    line-height: 1.6;
+    margin: 0;
+    padding: 0 1em;
+    color: #333;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    margin-top: 1em;
+    margin-bottom: 0.5em;
+    font-weight: bold;
+}
+
+p {
+    text-indent: 2em;
+    margin-bottom: 1em;
+    text-align: justify;
+}
+
+/* Image styles */
+img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 1em auto;
+    page-break-inside: avoid;
+}
+
+.image-wrapper {
+    text-align: center;
+}
+
+/* Footnote styles */
+sup {
+    font-size: 0.8em;
+    vertical-align: super;
+}
+
+.duokan-footnote {
+    font-size: 0.8em;
+}
+
+img.epub-footnote {
+    display: inline;
+    margin-right: 5px;
+    font-size: 12px;
+    width: 10px;
+    height: 10px;
+}
+
+aside[epub:type="footnote"] {
+    font-size: 0.9em;
+    margin: 1em 0;
+    padding: 0.5em 1em;
+    border-left: 2px solid #ccc;
+}
+
+.duokan-footnote-content {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+/* Table styles */
+table, tr, td, th, tbody, thead, tfoot {
+    page-break-inside: avoid !important;
+}
+
+/* Links */
+a {
+    color: #0066cc;
+    text-decoration: none;
+}
+
+a:visited {
+    color: #800080;
+}
