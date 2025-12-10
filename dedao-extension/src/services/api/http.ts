@@ -24,7 +24,7 @@ export class HttpClient {
                 'Content-Type': 'application/json',
                 ...options.headers,
             },
-            body: JSON.stringify(body),
+            body: body ? JSON.stringify(body) : undefined,
         });
     }
 

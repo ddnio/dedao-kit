@@ -1,0 +1,45 @@
+{
+  "name": "dedao-dl",
+  "version": "1.0.0",
+  "description": "> 🦉 《得到》 APP 课程下载工具，扫码或者使用 cookie 登录后，可在终端查看已购买的课程，听书书架，电子书架，锦囊，推荐话题等",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "jest",
+    "build": "tsc && vite build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yann0917/dedao-dl.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/yann0917/dedao-dl/issues"
+  },
+  "homepage": "https://github.com/yann0917/dedao-dl#readme",
+  "devDependencies": {
+    "@types/chrome": "^0.1.32",
+    "@types/crypto-js": "^4.2.2",
+    "@types/jest": "^30.0.0",
+    "@types/jszip": "^3.4.0",
+    "@types/node": "^24.10.2",
+    "@types/xmldom": "^0.1.34",
+    "esbuild-register": "^3.6.0",
+    "jest": "^30.2.0",
+    "jest-environment-jsdom": "^30.2.0",
+    "ts-jest": "^29.4.6",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.2.7"
+  },
+  "dependencies": {
+    "crypto-js": "^4.2.0",
+    "jszip": "^3.10.1",
+    "xmldom": "^0.6.0"
+  }
+}

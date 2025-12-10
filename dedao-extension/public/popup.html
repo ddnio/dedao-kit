@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Dedao Downloader</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <img src="icons/icon48.png" alt="Logo" class="logo" onerror="this.style.display='none'">
+            <h2>Dedao EPUB</h2>
+        </div>
+        
+        <div class="content">
+            <h3 id="book-title" class="book-title">Detecting book...</h3>
+            
+            <div id="progress-section" class="hidden">
+                <div class="progress-bar-bg">
+                    <div id="progress-bar" class="progress-bar-fill" style="width: 0%"></div>
+                </div>
+                <p id="status-text" class="status-text">Initializing...</p>
+            </div>
+
+            <div id="error-message" class="error-message hidden"></div>
+        </div>
+
+        <div class="actions">
+            <button id="download-btn" class="btn primary" disabled>Download EPUB</button>
+        </div>
+    </div>
+    <script src="assets/popup.js" type="module"></script>
+</body>
+</html>
