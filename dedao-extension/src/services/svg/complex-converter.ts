@@ -255,30 +255,67 @@ export class ComplexSvgConverter {
                     if (item.href) {
                         images.push(item.href); // Keep original remote URL in images list
                         
+                        const widthVal = parseFloat(item.width || '0');
+                        const heightVal = parseFloat(item.height || '0');
+                        
+                        // Reference format: no decimals if integer, else 6 decimals?
+                        // Reference output shows: width="10" (no decimals) for small icons.
+                        // And usually width="10.000000" in generated output.
+                        // We should format it.
+                        const widthStr = Number.isInteger(widthVal) ? widthVal.toString() : widthVal.toFixed(6);
+                        const heightStr = Number.isInteger(heightVal) ? heightVal.toString() : heightVal.toFixed(6);
+
                         let imgTagContent = `<img src="__IMG_PLACEHOLDER_${encodeURIComponent(item.href)}__" alt="${item.alt}"`;
-                        if (item.width) imgTagContent += ` width="${item.width}"`;
-                        if (item.height) imgTagContent += ` height="${item.height}"`; // Add height if available
+                        if (item.width) imgTagContent += ` width="${widthStr}"`;
+                        if (item.height) imgTagContent += ` height="${heightStr}"`; 
+                        
+                        // Check for footnote image (small size)
+                        const isFootnoteIcon = widthVal > 0 && widthVal <= 20;
+
+                        if (isFootnoteIcon) {
+                             // Add specific classes found in reference
+                             imgTagContent += ` class="epub-footnote zhangyue-footnote qqreader-footnote"`;
+                        }
+                        
                         imgTagContent += ' />';
 
-                        if (item.isFootnoteImage) { // Use the new flag
-                            const footnoteId = `footnote-${chapterId}-${i}-${Math.floor(Math.random() * 1000000)}`; // Generate unique ID
+                        if (isFootnoteIcon) { // Use size check for footnote logic in generation too
+                            const footnoteId = `footnote-${chapterId}-${i}-${Math.floor(Math.random() * 1000000)}`; 
                             const footnoteText = this.escapeHtml(item.alt);
                             footnotes.push({ id: footnoteId, text: footnoteText });
 
-                            lineHtml += `<sup><a class="duokan-footnote" epub:type="noteref" href="#${footnoteId}">${imgTagContent}</a></sup>`;
-                            if (hasUnclosedSpan) { // Close span before inserting complex footnote ref
+                            // If there was an open span, close it temporarily? Or just append.
+                            // Ideally footnote ref is superscript.
+                            // Go reference: <sup><a ...><img .../></a></sup>
+                            // The current logic does this below:
+                            
+                            // Close span if needed
+                            let spanClosed = false;
+                            if (hasUnclosedSpan) {
                                 lineHtml += '</span>';
-                                hasUnclosedSpan = false;
+                                spanClosed = true;
+                            }
+
+                            lineHtml += `<sup><a class="duokan-footnote" epub:type="noteref" href="#${footnoteId}">${imgTagContent}</a></sup>`;
+                            
+                            // Reopen span if needed
+                            if (spanClosed) {
+                                lineHtml += `<span style="${currentSpanStyle}">`;
                             }
                         } else {
                             // Block/Large image
+                            let spanClosed = false;
                             if (hasUnclosedSpan) {
                                 lineHtml += '</span>';
-                                hasUnclosedSpan = false;
+                                spanClosed = true;
                             }
-                            let imgStyle = '';
-                            if (item.style) imgStyle = ` style="${item.style}"`;
-                            lineHtml += `<div class="image-wrapper" style="${alignStyle}${item.style}">${imgTagContent}</div>`;
+                            
+                            // Go version wraps large images in div.image-wrapper
+                            lineHtml += `<div class="image-wrapper" style="">${imgTagContent}</div>`;
+                            
+                            if (spanClosed) {
+                                lineHtml += `<span style="${currentSpanStyle}">`;
+                            }
                         }
                     }
                 } else if (item.name === 'text') {

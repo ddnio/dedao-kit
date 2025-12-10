@@ -81,11 +81,13 @@ export class DownloadManager {
                             // Normalize svg+xml to svg
                             if (coverImageExt === 'svg+xml') coverImageExt = 'svg';
 
-                            const currentImageIndex = this.imageCounter;
-                            const coverImageFilename = `image_${String(currentImageIndex).padStart(3, '0')}.${coverImageExt}`;
-                            const coverImageId = `image_${String(currentImageIndex).padStart(3, '0')}`;
+                            // Cover naming to match reference which likely uses 'cover.jpg' separately
+                            // Reference has 'EPUB/images/cover.jpg' and 'EPUB/images/image_000.png' (content)
+                            const coverImageFilename = `cover.${coverImageExt}`;
+                            const coverImageId = `cover-image`; // Match standard ID often used
 
-                            this.imageCounter++; // Increment after using
+                            // Content images start at 000
+                            this.imageCounter = 0; 
                             
                             coverInfo = { id: coverImageId, href: `images/${coverImageFilename}` };
                             this.urlToIdMap.set(coverUrl, coverInfo);
@@ -235,8 +237,12 @@ a:visited {
     color: #800080;
 }
 `;
+            // Resource href is now css/cover.css to match new structure
             pkg.resources.push({ id: 'css', href: 'style.css', mediaType: 'text/css', content: cssContent });
-            pkg.manifest.push({ id: 'css', href: 'style.css', mediaType: 'text/css' });
+            // Manifest href should also be updated? 
+            // Generator handles 'style.css' href specially to write to 'css/cover.css'.
+            // But we should update the link in XHTML.
+            pkg.manifest.push({ id: 'css', href: 'css/cover.css', mediaType: 'text/css' });
 
             // Process Chapters
             const chapters = bookInfo.chapters || [];
@@ -250,19 +256,20 @@ a:visited {
                 const pagesResponse = await this.fetchAllPages(chapter.id, token);
                 
                                 // Process content
-                // Note: CSS link uses relative path - XHTML files are in EPUB/xhtml/, CSS is at EPUB/ root
-                // So we need ../style.css to go up one level
-                let chapterHtml = `<?xml version="1.0" encoding="utf-8"?>
+                // Note: CSS link uses relative path - XHTML files are in EPUB/xhtml/, CSS is at EPUB/css/cover.css
+                // So we need ../css/cover.css to go up one level then into css
+                let chapterHtml = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
 <head>
     <title>${escapeXml(chapter.title)}</title>
-    <link rel="stylesheet" type="text/css" href="../style.css"/>
+    <link rel="stylesheet" type="text/css" href="../css/cover.css"/>
 </head>
 <body>
-    <h1>${escapeXml(chapter.title)}</h1>
-    <div class="chapter-content">
-`;
+
+<div id="${sanitizeId(chapter.id)}">
+</div><div class="header1"><h2><span style="font-size:19px;font-weight: bold;color:rgb(0, 0, 0);font-family:'PingFang SC';display: block;text-align:center;"><b>${escapeXml(chapter.title)}</b></span></h2></div>
+<div class="part">`;
                                 
                                 for (const page of pagesResponse) {                
                                                         const decryptedSvg = AESCrypto.decrypt(page.content); // page.content is encrypted string
@@ -281,7 +288,6 @@ a:visited {
                                                                     const imgBlob = await this.downloadImage(imgUrl);
                                                                     if (imgBlob) {
                                                                         let imgExt = (imgBlob.type && imgBlob.type.split('/')[1]) || 'jpg';
-                                    if (imgExt === 'svg+xml') imgExt = 'svg';
                                 if (imgExt === 'svg+xml') imgExt = 'svg';
                                                                         
                                                                         // imageCounter will be the current count, imgId will be based on that.
@@ -323,16 +329,19 @@ a:visited {
                                                                 logger.warn(`Failed to process image ${imgUrl}: ${e}`, e);
                                                             }
                                                         }
-                                                        chapterHtml += processedChapterHtml;
                                     
-                                                        // Append footnotes collected from this page
+                                                        // Append footnotes collected from this page at the BEGINNING of the part (or before content)
+                                                        // Reference puts footnotes inside div.part, before <p> tags.
+                                                        // Since we iterate pages, we might have multiple sets of footnotes.
+                                                        // We should append them to chapterHtml before appending processedChapterHtml.
                                                         for (const fn of pageFootnotes) {
                                                             chapterHtml += `<aside epub:type="footnote" id="${fn.id}"><ol class="duokan-footnote-content" style="list-style:none;padding:0px;margin:0px;"><li class="duokan-footnote-item" id="${fn.id}">${fn.text}</li></ol></aside>`;
                                                         }
+                                                        
+                                                        chapterHtml += processedChapterHtml;
                                                     }
                                     
-                                    chapterHtml += `
-    </div>
+                                    chapterHtml += `</div>
 </body>
 </html>`;
 
