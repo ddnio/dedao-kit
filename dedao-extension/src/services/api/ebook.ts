@@ -1,7 +1,7 @@
-import { httpClient } from './http';
-import { EbookMetadata } from '../../types/ebook';
-import { TokenResponse, BookInfoResponse, ApiResponse, ChapterPagesResponse } from '../../types/api';
-import { logger } from '../../utils/logger';
+import { httpClient } from './http.ts';
+import { EbookMetadata } from '../../types/ebook.ts';
+import { TokenResponse, BookInfoResponse, ApiResponse, ChapterPagesResponse } from '../../types/api.ts';
+import { logger } from '../../utils/logger.ts';
 
 export class EbookAPI {
     private static readonly BASE_URL = 'https://www.dedao.cn';

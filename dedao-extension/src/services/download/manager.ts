@@ -1,12 +1,12 @@
-import { ebookApi } from '../api/ebook';
-import { AESCrypto } from '../crypto/aes';
-import { ComplexSvgConverter } from '../svg/complex-converter';
-import { EpubGenerator } from '../epub/generator';
-import { DownloadTask, TaskStatus, ProgressInfo, TaskError } from '../../types/download';
-import { EpubPackage, ManifestItem, SpineItem, EpubResource, NavPoint } from '../../types/epub';
-import { EbookMetadata, Chapter } from '../../types/ebook';
-import { sanitizeId, escapeXml, calculateProgress } from '../epub/utils';
-import { logger } from '../../utils/logger';
+import { ebookApi } from '../api/ebook.ts';
+import { AESCrypto } from '../crypto/aes.ts';
+import { ComplexSvgConverter } from '../svg/complex-converter.ts';
+import { EpubGenerator } from '../epub/generator.ts';
+import { DownloadTask, TaskStatus, ProgressInfo, TaskError } from '../../types/download.ts';
+import { EpubPackage, ManifestItem, SpineItem, EpubResource, NavPoint } from '../../types/epub.ts';
+import { EbookMetadata, Chapter } from '../../types/ebook.ts';
+import { sanitizeId, escapeXml, calculateProgress } from '../epub/utils.ts';
+import { logger } from '../../utils/logger.ts';
 
 export class DownloadManager {
     private converter = new ComplexSvgConverter();
