@@ -31,6 +31,7 @@ export interface ConvertedPage {
     html: string;
     images: string[];
     footnotes: { id: string, text: string }[]; // New: Collected footnote definitions
+    footnoteIconUrl?: string; // URL of the footnote icon (should be reused globally)
 }
 
 const FOOT_NOTE_IMG_W = 20;
@@ -224,6 +225,7 @@ export class ComplexSvgConverter {
         let html = '<div class="page-content">';
         const images: string[] = [];
         const footnotes: { id: string, text: string }[] = []; // Collect footnotes here
+        let footnoteIconUrl: string | undefined; // Track the footnote icon URL for global reuse
 
         // Sort lines by Y coordinate
         const sortedYs = Array.from(lineContent.keys()).sort((a, b) => a - b);
@@ -241,7 +243,7 @@ export class ComplexSvgConverter {
             const centerH = (REQ_EBOOK_PAGE_WIDTH / 2) * 1.1;
             const rightL = (REQ_EBOOK_PAGE_WIDTH) * 0.9;
 
-            let alignStyle = '';
+            let alignStyle = 'text-align:left;'; // Default to left align like Go version
             if (firstX >= centerL && firstX <= centerH) {
                 alignStyle = 'text-align:center;';
             } else if (firstX >= rightL) {
@@ -272,8 +274,9 @@ export class ComplexSvgConverter {
                         if (item.width) imgTagContent += ` width="${widthStr}"`;
                         if (item.height) imgTagContent += ` height="${heightStr}"`; 
                         
-                        // Check for footnote image (small size)
-                        const isFootnoteIcon = widthVal > 0 && widthVal <= 20;
+                        // Check for footnote image (small size AND must have class)
+                        // Go code: (w < footNoteImgW || h < footNoteImgH) && len(item.Class) > 0
+                        const isFootnoteIcon = (widthVal > 0 && widthVal < FOOT_NOTE_IMG_W || heightVal > 0 && heightVal < FOOT_NOTE_IMG_H) && item.class && item.class.length > 0;
 
                         if (isFootnoteIcon) {
                              // Add specific classes found in reference
@@ -283,30 +286,21 @@ export class ComplexSvgConverter {
                         imgTagContent += ' />';
 
                         if (isFootnoteIcon) { // Use size check for footnote logic in generation too
+                            // Track footnote icon URL for global reuse (all footnotes should use same icon)
+                            if (!footnoteIconUrl) {
+                                footnoteIconUrl = item.href;
+                            }
+
                             // Use simple sequential footnote IDs like Go does: footnote-3-<num>
                             const footnoteNum = this.getNextFootnoteNum ? this.getNextFootnoteNum() : this.footnoteCounter++;
                             const footnoteId = `footnote-3-${footnoteNum}`;
                             const footnoteText = this.escapeHtml(item.alt);
                             footnotes.push({ id: footnoteId, text: footnoteText });
 
-                            // If there was an open span, close it temporarily? Or just append.
-                            // Ideally footnote ref is superscript.
-                            // Go reference: <sup><a ...><img .../></a></sup>
-                            // The current logic does this below:
-                            
-                            // Close span if needed
-                            let spanClosed = false;
-                            if (hasUnclosedSpan) {
-                                lineHtml += '</span>';
-                                spanClosed = true;
-                            }
-
-                            lineHtml += `<sup><a class="duokan-footnote" epub:type="noteref" href="#${footnoteId}">${imgTagContent}</a></sup>`;
-                            
-                            // Reopen span if needed
-                            if (spanClosed) {
-                                lineHtml += `<span style="${currentSpanStyle}">`;
-                            }
+                            // Keep footnote inline without breaking span
+                            // Go reference: text <sup><a ...><img .../></a></sup> text
+                            // Important: Don't close/reopen span - keep it continuous
+                            lineHtml += ` <sup><a class="duokan-footnote" epub:type="noteref" href="#${footnoteId}">${imgTagContent}</a></sup>`;
                         } else {
                             // Block/Large image
                             let spanClosed = false;
@@ -364,7 +358,7 @@ export class ComplexSvgConverter {
         }
 
         html += '</div>';
-        return { html, images, footnotes };
+        return { html, images, footnotes, footnoteIconUrl };
     }
 
     private createEmptyHtmlEle(): HtmlEle {

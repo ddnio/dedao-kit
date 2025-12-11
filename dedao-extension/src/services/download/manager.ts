@@ -14,6 +14,8 @@ export class DownloadManager {
     private imageCounter = 0; // New counter for sequential image naming
     private footnoteCounter = 0; // Counter for sequential footnote IDs
     private urlToIdMap = new Map<string, { id: string, href: string }>(); // Cache for image deduplication
+    private footnoteIconUrl: string | undefined; // Global footnote icon URL (reused across whole book)
+    private footnoteIconId: string | undefined; // ID of the footnote icon
 
     constructor() {
         // Pass footnote counter getter to converter
@@ -29,6 +31,8 @@ export class DownloadManager {
         this.imageCounter = 0;
         this.footnoteCounter = 0;
         this.urlToIdMap.clear();
+        this.footnoteIconUrl = undefined;
+        this.footnoteIconId = undefined;
 
         const task: DownloadTask = {
             bookId,
@@ -199,13 +203,14 @@ img {
                 // Note: CSS link uses relative path - XHTML files are in EPUB/xhtml/, CSS is at EPUB/css/cover.css
                 // So we need ../css/cover.css to go up one level then into css
                 // Split title into individual characters and wrap each in <b> tags
-                const titleChars = chapter.title.split('').map(char => `<b>${escapeXml(char)}</b>`).join('');
+                const title = (chapter.title && chapter.title.trim()) || ''; // Ensure title is not just whitespace
+                const titleChars = title ? title.split('').map(char => `<b>${escapeXml(char)}</b>`).join('') : '';
 
                 let chapterHtml = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
 <head>
-    <title>${escapeXml(chapter.title)}</title>
+    <title>${escapeXml(title || chapter.id)}</title>
     <link rel="stylesheet" type="text/css" href="../css/cover.css"/>
 </head>
 <body>
@@ -214,62 +219,88 @@ img {
 </div><div class="${headerClass}"><h2><span style="font-size:19px;font-weight: bold;color:rgb(0, 0, 0);font-family:'PingFang SC';display: block;text-align:center;">${titleChars}</span></h2></div>
 <div class="part">`;
                                 
-                                for (const page of pagesResponse) {                
+                                for (const page of pagesResponse) {
                                                         const decryptedSvg = AESCrypto.decrypt(page.content); // page.content is encrypted string
                                                         // Use new converter with chapterId, it now returns HTML with placeholders and footnotes
-                                                        const { html: convertedHtml, images: remoteImageUrls, footnotes: pageFootnotes } = this.converter.convert(decryptedSvg, chapter.id);
-                                                        
+                                                        const { html: convertedHtml, images: remoteImageUrls, footnotes: pageFootnotes, footnoteIconUrl: pageFootnoteIconUrl } = this.converter.convert(decryptedSvg, chapter.id);
+
+                                                        // Capture first footnote icon URL for global reuse
+                                                        if (pageFootnoteIconUrl && !this.footnoteIconUrl) {
+                                                            this.footnoteIconUrl = pageFootnoteIconUrl;
+                                                        }
+
                                                         let processedChapterHtml = convertedHtml; // Work on a mutable copy of the HTML fragment
-                                    
+
                                                         // Download and deduplicate images, then replace placeholders in the HTML fragment
                                                         for (const imgUrl of remoteImageUrls) {
                                                             try {
                                                                 const normalizedImgUrl = this.normalizeUrl(imgUrl);
                                                                 let imgInfo = this.urlToIdMap.get(normalizedImgUrl);
-                                    
+
                                                                 if (!imgInfo) {
-                                                                    // Check if it matches cover (even if not in map yet due to some reason, or to double check)
-                                                                    const normalizedCoverUrl = this.normalizeUrl(coverUrl || '');
-                                                                    if (coverUrl && normalizedImgUrl === normalizedCoverUrl) {
-                                                                         // It is the cover
-                                                                         // Assuming cover was processed and is 'images/cover.jpeg' (or ext)
-                                                                         // We need to know the cover filename/ext used earlier.
-                                                                         // But we can check if urlToIdMap has it? We just checked !imgInfo.
-                                                                         // If it's not in map, maybe cover wasn't added correctly?
-                                                                         // Or maybe coverUrl changed?
-                                                                         // If we find it, treat as cover.
-                                                                         // Recover cover extension from url or default
-                                                                         let ext = 'jpg';
-                                                                         if (imgUrl.includes('.png')) ext = 'png';
-                                                                         else if (imgUrl.includes('.jpeg') || imgUrl.includes('.jpg')) ext = 'jpeg';
-                                                                         
-                                                                         const coverFilename = `cover.${ext}`; // Approximation
-                                                                         // Ideally we used the one from the start.
-                                                                         
-                                                                         // If we are here, it means we missed the cache hit. 
-                                                                         // Let's force add to map if it matches cover logic
-                                                                         imgInfo = { id: 'cover-image', href: `images/${coverFilename}` };
-                                                                         this.urlToIdMap.set(normalizedImgUrl, imgInfo);
+                                                                    // Check if it's a footnote icon
+                                                                    const isFootnoteIcon = this.footnoteIconUrl && normalizedImgUrl === this.normalizeUrl(this.footnoteIconUrl);
+
+                                                                    if (isFootnoteIcon && this.footnoteIconId) {
+                                                                        // Footnote icon already downloaded, reuse its ID
+                                                                        imgInfo = { id: this.footnoteIconId, href: `images/${this.footnoteIconId}.png` };
+                                                                        this.urlToIdMap.set(normalizedImgUrl, imgInfo);
+                                                                    } else if (isFootnoteIcon) {
+                                                                        // First time seeing this footnote icon, download it once
+                                                                        const imgBlob = await this.downloadImage(imgUrl);
+                                                                        if (imgBlob) {
+                                                                            let imgExt = (imgBlob.type && imgBlob.type.split('/')[1]) || 'png';
+                                                                            if (imgExt === 'svg+xml') imgExt = 'svg';
+
+                                                                            // Use fixed index 0 for footnote icon (global reuse)
+                                                                            const imgId = 'image_000';
+                                                                            const imgFilename = `image_000.${imgExt}`;
+
+                                                                            this.footnoteIconId = imgId;
+                                                                            imgInfo = { id: imgId, href: `images/${imgFilename}` };
+                                                                            this.urlToIdMap.set(normalizedImgUrl, imgInfo);
+
+                                                                            pkg.resources.push({
+                                                                                id: imgInfo.id,
+                                                                                href: imgInfo.href,
+                                                                                mediaType: imgBlob.type || 'image/png',
+                                                                                content: imgBlob
+                                                                            });
+                                                                            pkg.manifest.push({
+                                                                                id: imgInfo.id,
+                                                                                href: imgInfo.href,
+                                                                                mediaType: imgBlob.type || 'image/png'
+                                                                            });
+
+                                                                            // Increment counter to skip image_000 for other images
+                                                                            if (this.imageCounter === 0) this.imageCounter++;
+                                                                        }
+                                                                    } else if (coverUrl && normalizedImgUrl === this.normalizeUrl(coverUrl)) {
+                                                                        // Handle cover image
+                                                                        let ext = 'jpg';
+                                                                        if (imgUrl.includes('.png')) ext = 'png';
+                                                                        else if (imgUrl.includes('.jpeg') || imgUrl.includes('.jpg')) ext = 'jpeg';
+
+                                                                        const coverFilename = `cover.${ext}`;
+                                                                        imgInfo = { id: 'cover-image', href: `images/${coverFilename}` };
+                                                                        this.urlToIdMap.set(normalizedImgUrl, imgInfo);
                                                                     } else {
-                                                                        // New image, download it
+                                                                        // Regular image, download it
                                                                         const imgBlob = await this.downloadImage(imgUrl);
                                                                         if (imgBlob) {
                                                                             let imgExt = (imgBlob.type && imgBlob.type.split('/')[1]) || 'jpg';
-                                    if (imgExt === 'svg+xml') imgExt = 'svg';
-                                    
-                                                                            // Double check against cover AGAIN with blob type? No.
-                                                                            
-                                                                            // imageCounter will be the current count, imgId will be based on that.
-                                                                            // Then increment imageCounter for the next unique image.
+                                                                            if (imgExt === 'svg+xml') imgExt = 'svg';
+
+                                                                            // Skip index 0 if it's used for footnote icon
                                                                             const currentImageIndex = this.imageCounter;
-                                                                            this.imageCounter++; // Increment for the next unique image
-                                        
+                                                                            this.imageCounter++;
+
                                                                             const imgFilename = `image_${String(currentImageIndex).padStart(3, '0')}.${imgExt}`;
                                                                             const imgId = `image_${String(currentImageIndex).padStart(3, '0')}`;
-                                                                            
+
                                                                             imgInfo = { id: imgId, href: `images/${imgFilename}` };
                                                                             this.urlToIdMap.set(normalizedImgUrl, imgInfo);
-                                        
+
                                                                             pkg.resources.push({
                                                                                 id: imgInfo.id,
                                                                                 href: imgInfo.href,
