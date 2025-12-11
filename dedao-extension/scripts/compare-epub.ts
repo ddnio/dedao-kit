@@ -97,9 +97,10 @@ async function compareEpub(refPath: string, genPath: string) {
 }
 
 const args = process.argv.slice(2);
-if (args.length < 2) {
-    console.log('Usage: npx ts-node scripts/compare-epub.ts <ref.epub> <gen.epub>');
-    process.exit(1);
-}
+const refEpub = args[0] || 'specs/002-align-epub-format/fixtures/reference.epub';
+const genEpub = args[1] || 'dedao_<BookID>.epub';
 
-compareEpub(args[0], args[1]).catch(err => console.error(err));
+console.log(`Using reference EPUB: ${refEpub}`);
+console.log(`Comparing to generated EPUB: ${genEpub}`);
+
+compareEpub(refEpub, genEpub).catch(err => console.error(err));

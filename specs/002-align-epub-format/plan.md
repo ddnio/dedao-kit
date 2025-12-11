@@ -1,88 +1,71 @@
-# 实施计划: 对齐 EPUB 格式与 Go 项目
+# Implementation Plan: Align EPUB format with Go project
 
-**分支**: `002-align-epub-format` | **日期**: 2025-12-10 | **规范**: `/specs/002-align-epub-format/spec.md`
-**输入**: 来自 `/specs/002-align-epub-format/spec.md` 的功能规范
+**Branch**: `002-align-epub-format` | **Date**: 2025-12-10 | **Spec**: `specs/002-align-epub-format/spec.md`
+**Input**: Feature specification from `/specs/002-align-epub-format/spec.md`
 
-**说明**: 本模板由 `/speckit.plan` 命令填充。执行工作流请参见 `.specify/templates/commands/plan.md`。
+**Note**: This template is filled in by the `/speckit.plan` command. See `.specify/templates/commands/plan.md` for the execution workflow.
 
-## 摘要
+## Summary
 
-**需求**: 用户报告浏览器扩展生成的 EPUB 在视觉和结构上与原始 Go CLI 工具生成的不同，特别指出了第一章的排版问题。
-**方法**: 调整 `dedao-extension` 代码库以完全模仿 Go 项目的输出。这包括更新 HTML 生成逻辑以匹配 Go 项目的 DOM 结构（`header0`, `part`, `aside`），将样式表移动到 `EPUB/css/cover.css`，并对齐图片命名/标签规范。
+Align the browser extension’s EPUB export output with the Go CLI reference by mirroring the CSS locations, DOM containers, and resource naming conventions across the entire book, so that the generated “第一章” and later chapters are visually indistinguishable from the provided reference EPUB.
 
-## 技术背景
+## Technical Context
 
-**语言/版本**: TypeScript 5.x (浏览器扩展)
-**主要依赖**: `jszip` (ZIP 生成), `cheerio` (如果需要 HTML 解析/操作，当前使用字符串模板/DOM API), `crypto-js` (用于解密，现有)
-**存储**: N/A (仅文件生成)
-**测试**: Jest (单元/集成)，与参考 EPUB 的手动对比
-**目标平台**: 浏览器扩展 (Chrome/Edge/Firefox, Manifest V3)
-**项目类型**: 浏览器扩展
-**性能目标**: EPUB 生成 < 30秒 (客户端)
-**约束**: 必须生成有效的 EPUB 3.0；必须在结构上尽可能与 Go 输出字节对齐。
-**规模/范围**: 重构现有的 `EpubGenerator`、`SvgConverter` 和 `Chapter` 处理逻辑。
+**Language/Version**: TypeScript 5.9 + Node.js 20 (Vite build pipeline)  
+**Primary Dependencies**: Vite 7.2.7, TypeScript, jszip (EPUB packaging), xmldom (DOM manipulation), Chrome Extension Manifest V3 runtime  
+**Storage**: Local filesystem (extension-triggered EPUB zip in user downloads folder)  
+**Testing**: Jest + ts-jest (runs inside `dedao-extension` with DOM mocks)  
+**Target Platform**: Chrome/Chromium-based browsers (Manifest V3 extension + Vite dev server for builds)  
+**Project Type**: Web extension with content/popup/background scripts bundled via Vite  
+**Performance Goals**: NEEDS CLARIFICATION  
+**Constraints**: NEEDS CLARIFICATION  
+**Scale/Scope**: NEEDS CLARIFICATION
 
-## 章程检查
+## Constitution Check
 
-*门禁：Phase 0 研究前必须通过。Phase 1 设计后重新评估。*
+*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-### ✅ I. 模块化架构
-- **状态**: ✅ 通过
-- **说明**: 更改仅限于 `src/services/epub/` (Generator, Manifest) 和 `src/services/svg/` (Converter)。它改进了现有模块，没有紧密耦合。
+Constitution placeholder file (`.specify/memory/constitution.md`) currently contains template stubs (no active gates). No violations detected; revisit if a concrete policy is provided.
 
-### ✅ II. 道德合规与版权
-- **状态**: ✅ 通过
-- **说明**: 纯格式更改。不更改 DRM 处理或内容访问范围。
+## Project Structure
 
-### ✅ III. 最小权限原则 (安全性)
-- **状态**: ✅ 通过
-- **说明**: 不需要新权限。文件生成在本地内存中进行。
-
-### ✅ IV. 技术栈与参考
-- **状态**: ✅ 通过
-- **说明**: 我们明确按照章程的“参考驱动实现”工作流，与 `dedao-dl` (Go) 参考逻辑对齐。
-
-### ✅ V. 产品范围策略
-- **状态**: ✅ 通过
-- **说明**: 仍专注于电子书下载 (v1.0 范围)。
-
-## 项目结构
-
-### 文档 (本功能)
+### Documentation (this feature)
 
 ```text
 specs/002-align-epub-format/
-├── plan.md              # 本文件
-├── research.md          # Phase 0 输出
-├── data-model.md        # Phase 1 输出
-├── quickstart.md        # Phase 1 输出
-├── contracts/           # Phase 1 输出
-└── tasks.md             # Phase 2 输出
+├── spec.md              # Feature requirements (this file)
+├── plan.md              # This file (/speckit.plan output)
+├── research.md          # Phase 0 research/decisions
+├── data-model.md        # Phase 1 data model
+├── quickstart.md        # Phase 1 quickstart
+├── contracts/           # Phase 1 API/command contracts
+└── tasks.md             # Phase 2 output (not created here)
 ```
 
-### 源代码 (仓库根目录)
+### Source Code (extension workspace)
 
 ```text
 dedao-extension/
 ├── src/
-│   ├── services/
-│   │   ├── epub/
-│   │   │   ├── generator.ts  # 更新: 文件路径 (css/cover.css), 结构
-│   │   │   ├── manifest.ts   # 更新: 清单条目
-│   │   │   └── utils.ts      # 更新: 图片命名逻辑
-│   │   └── svg/
-│   │       ├── converter.ts  # 更新: HTML 结构生成
-│   │       └── complex-converter.ts # 更新: 标题/脚注逻辑
-│   └── types/
-│       └── epub.ts           # 更新: 如果需要新的结构类型
-└── tests/
-    └── integration/          # 更新: 针对参考结构进行验证
+│   ├── content/          # content scripts extracting EPUB fragments
+   │   ├── services/   # ebook assembly helpers (alignment, packaging)
+   │   ├── popup/       # user-triggered controls (export, settings)
+   │   ├── utils/       # shared helpers (DOM diffing, naming)
+   │   └── types/       # TypeScript definitions for EPUB models
+├── public/               # static assets referenced by builds (manifest, icons)
+├── scripts/              # helper scripts for debugging/export or manual runs
+├── tests/                # Jest suites validating HTML output and helpers
+├── dist/                 # Vite-built extension bundles (output directory)
+└── package.json          # defines dependencies (Vite, jszip, xmldom, etc.)
 ```
 
-**结构决策**: 我们保持现有的 `dedao-extension` 结构，但重构 `services/epub` 和 `services/svg` 模块的内部逻辑。不需要新的顶层目录。
+**Structure Decision**: Continue working within the existing `dedao-extension` Vite-based Chrome extension project, modifying `src/services` and packaging helpers to mirror the Go EPUB reference structure.
 
-## 复杂度追踪
+## Complexity Tracking
 
-| 违规项 | 为何需要 | 拒绝更简单替代方案的原因 |
-|--------|----------|--------------------------|
-| 无 | N/A | N/A |
+> **Fill ONLY if Constitution Check has violations that must be justified**
+
+| Violation | Why Needed | Simpler Alternative Rejected Because |
+|-----------|------------|-------------------------------------|
+| [e.g., 4th project] | [current need] | [why 3 projects insufficient] |
+| [e.g., Repository pattern] | [specific problem] | [why direct DB access insufficient] |

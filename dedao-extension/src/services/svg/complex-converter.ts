@@ -222,7 +222,7 @@ export class ComplexSvgConverter {
     }
 
     private generateHtmlFromLines(lineContent: Map<number, HtmlEle[]>, chapterId: string): ConvertedPage { // Added chapterId param
-        let html = '<div class="page-content">';
+        let html = '';
         const images: string[] = [];
         const footnotes: { id: string, text: string }[] = []; // Collect footnotes here
         let footnoteIconUrl: string | undefined; // Track the footnote icon URL for global reuse
@@ -259,62 +259,58 @@ export class ComplexSvgConverter {
                 if (item.name === 'image') {
                     if (item.href) {
                         images.push(item.href); // Keep original remote URL in images list
-                        
+
                         const widthVal = parseFloat(item.width || '0');
                         const heightVal = parseFloat(item.height || '0');
-                        
-                        // Reference format: no decimals if integer, else 6 decimals?
-                        // Reference output shows: width="10" (no decimals) for small icons.
-                        // And usually width="10.000000" in generated output.
-                        // We should format it.
-                        const widthStr = Number.isInteger(widthVal) ? widthVal.toString() : widthVal.toFixed(6);
-                        const heightStr = Number.isInteger(heightVal) ? heightVal.toString() : heightVal.toFixed(6);
 
-                        let imgTagContent = `<img src="__IMG_PLACEHOLDER_${encodeURIComponent(item.href)}__" alt="${item.alt}"`;
-                        if (item.width) imgTagContent += ` width="${widthStr}"`;
-                        if (item.height) imgTagContent += ` height="${heightStr}"`; 
-                        
                         // Check for footnote image (small size AND must have class)
                         // Go code: (w < footNoteImgW || h < footNoteImgH) && len(item.Class) > 0
                         const isFootnoteIcon = (widthVal > 0 && widthVal < FOOT_NOTE_IMG_W || heightVal > 0 && heightVal < FOOT_NOTE_IMG_H) && item.class && item.class.length > 0;
 
-                        if (isFootnoteIcon) {
-                             // Add specific classes found in reference
-                             imgTagContent += ` class="epub-footnote zhangyue-footnote qqreader-footnote"`;
-                        }
-                        
-                        imgTagContent += ' />';
+                        if (!isFootnoteIcon) {
+                            // Regular image - generate img tag with proper sizing
+                            let imgTagContent = `<img src="__IMG_PLACEHOLDER_${encodeURIComponent(item.href)}__" alt="${item.alt}"`;
 
-                        if (isFootnoteIcon) { // Use size check for footnote logic in generation too
-                            // Track footnote icon URL for global reuse (all footnotes should use same icon)
-                            if (!footnoteIconUrl) {
-                                footnoteIconUrl = item.href;
+                            // Apply width/height with scaling (like Go version line 399-401)
+                            // For regular images, if width > 900, scale both proportionally
+                            if (widthVal > 0) {
+                                let scaledW = widthVal;
+                                let scaledH = heightVal;
+                                if (scaledW > 900) {
+                                    scaledH = 900 * scaledH / scaledW;
+                                    scaledW = 900;
+                                }
+                                const widthStr = Number.isInteger(scaledW) ? scaledW.toString() : scaledW.toFixed(6);
+                                const heightStr = Number.isInteger(scaledH) ? scaledH.toString() : scaledH.toFixed(6);
+                                imgTagContent += ` width="${widthStr}"`;
+                                imgTagContent += ` height="${heightStr}"`;
                             }
 
-                            // Use simple sequential footnote IDs like Go does: footnote-3-<num>
-                            const footnoteNum = this.getNextFootnoteNum ? this.getNextFootnoteNum() : this.footnoteCounter++;
-                            const footnoteId = `footnote-3-${footnoteNum}`;
-                            const footnoteText = this.escapeHtml(item.alt);
-                            footnotes.push({ id: footnoteId, text: footnoteText });
+                            imgTagContent += ' />';
 
-                            // Keep footnote inline without breaking span
-                            // Go reference: text <sup><a ...><img .../></a></sup> text
-                            // Important: Don't close/reopen span - keep it continuous
-                            lineHtml += ` <sup><a class="duokan-footnote" epub:type="noteref" href="#${footnoteId}">${imgTagContent}</a></sup>`;
-                        } else {
                             // Block/Large image
                             let spanClosed = false;
                             if (hasUnclosedSpan) {
                                 lineHtml += '</span>';
                                 spanClosed = true;
                             }
-                            
+
                             // Go version wraps large images in div.image-wrapper
                             lineHtml += `<div class="image-wrapper" style="">${imgTagContent}</div>`;
-                            
+
                             if (spanClosed) {
                                 lineHtml += `<span style="${currentSpanStyle}">`;
                             }
+                        } else {
+                            // Footnote icon - use pure text format [[n]] instead of image icon
+                            // Use simple sequential footnote numbers like Go does: footnote-3-<num>
+                            const footnoteNum = this.getNextFootnoteNum ? this.getNextFootnoteNum() : this.footnoteCounter++;
+                            const footnoteId = `footnote-3-${footnoteNum}`;
+                            const footnoteText = this.escapeHtml(item.alt);
+                            footnotes.push({ id: footnoteId, text: footnoteText });
+
+                            // Insert pure text format: [[n]]
+                            lineHtml += ` <sup><a class="duokan-footnote" epub:type="noteref" href="#${footnoteId}">[[${footnoteNum}]]</a></sup>`;
                         }
                     }
                 } else if (item.name === 'text') {
@@ -357,7 +353,6 @@ export class ComplexSvgConverter {
             }
         }
 
-        html += '</div>';
         return { html, images, footnotes, footnoteIconUrl };
     }
 

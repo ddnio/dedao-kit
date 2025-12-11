@@ -13,10 +13,12 @@ export class DownloadManager {
     private generator = new EpubGenerator();
     private imageCounter = 0; // New counter for sequential image naming
     private footnoteCounter = 0; // Counter for sequential footnote IDs
+    private tocIdCounter = 0; // Counter for sigil_toc_id_X attributes
     private urlToIdMap = new Map<string, { id: string, href: string }>(); // Cache for image deduplication
     private footnoteIconUrl: string | undefined; // Global footnote icon URL (reused across whole book)
     private footnoteIconId: string | undefined; // ID of the footnote icon
     private chapterIdMap = new Map<string, string>(); // Maps chapter.id to Chapter_X_Y format
+    private catalogMap = new Map<string, string>(); // Maps Chapter_X_Y to catalog title (TOC-driven)
 
     constructor() {
         // Pass footnote counter getter to converter
@@ -31,8 +33,10 @@ export class DownloadManager {
         // Reset state for new download
         this.imageCounter = 0;
         this.footnoteCounter = 0;
+        this.tocIdCounter = 0;
         this.urlToIdMap.clear();
         this.chapterIdMap.clear();
+        this.catalogMap.clear();
         this.footnoteIconUrl = undefined;
         this.footnoteIconId = undefined;
 
@@ -58,6 +62,9 @@ export class DownloadManager {
             updateProgress('Fetching ebook detail...', 0, 100);
             // Get metadata (title, author, description, cover) from detail endpoint
             const detail = await ebookApi.getEbookDetail(enid);
+
+            // Build catalog map from TOC (catalog_list) for title lookup
+            this.buildCatalogMap((detail as any).catalog_list || []);
 
             updateProgress('Fetching token...', 2, 100);
             const token = await ebookApi.getReadToken(enid);
@@ -199,9 +206,17 @@ img {
                 // Ref Chapter_1_1 (Intro) uses header0. Ref Chapter_1_1_0001 (Article) uses header1.
                 // Assuming chapter.level maps to this.
             const chapterIdentifier = this.buildChapterIdentifier(chapter);
-            const headerClass = `header${chapter.level !== undefined ? chapter.level : 1}`;
+            const level = chapter.level !== undefined ? chapter.level : 1;
+            const headerClass = `header${level}`;
 
-            const title = (chapter.title && chapter.title.trim()) || chapterIdentifier;
+            // Choose heading tag based on level: level 0 -> h1, level 1 -> h2, etc.
+            const headingTag = `h${Math.min(level + 1, 6)}`; // h1 to h6
+            const tocId = `sigil_toc_id_${++this.tocIdCounter}`;
+
+            // Title lookup: priority: catalogMap -> chapter.title -> chapterIdentifier
+            let title = this.catalogMap.get(chapterIdentifier)
+                || (chapter.title && chapter.title.trim())
+                || chapterIdentifier;
             const titleChars = title ? title.split('').map(char => `<b>${escapeXml(char)}</b>`).join('') : '';
 
             let chapterHtml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -213,7 +228,7 @@ img {
 </head>
 <body>
 
-<div id="${chapterIdentifier}"></div><div class="${headerClass}"><h2><span style="font-size:19px;font-weight: bold;color:rgb(0, 0, 0);font-family:'PingFang SC';display: block;text-align:center;">${titleChars}</span></h2></div>
+<div id="${chapterIdentifier}"></div><div class="${headerClass}"><${headingTag}><span id="${tocId}" style="font-size:19px;font-weight: bold;color:rgb(0, 0, 0);font-family:'PingFang SC';display: block;text-align:center;">${titleChars}</span></${headingTag}></div>
 <div class="part">`;
 
             // Collect all footnotes from all pages first
@@ -255,8 +270,8 @@ img {
                                                                         // First time seeing this footnote icon, download it once
                                                                         const imgBlob = await this.downloadImage(imgUrl);
                                                                         if (imgBlob) {
-                                                                            let imgExt = (imgBlob.type && imgBlob.type.split('/')[1]) || 'png';
-                                                                            if (imgExt === 'svg+xml') imgExt = 'svg';
+                                                                            // Always use PNG format for footnote icons to avoid duplication (PNG vs JPEG)
+                                                                            const imgExt = 'png';
 
                                                                             // Use fixed index 0 for footnote icon (global reuse)
                                                                             const imgId = 'image_000';
@@ -505,6 +520,23 @@ img {
                         this.chapterIdMap.set(chapter.id, `Chapter_${key}`);
                         topLevelMap.set(chapter.parentId, nextChildIndex);
                     }
+                }
+            }
+        }
+    }
+
+    /**
+     * Build catalog map from TOC for title lookup
+     * Extracts chapter IDs from catalog hrefs and maps them to their titles
+     */
+    private buildCatalogMap(catalogList: any[]): void {
+        for (const item of catalogList) {
+            if (item.href && item.text) {
+                // Extract chapter ID from href (e.g. "Chapter_1_1_0001.xhtml#..." -> "Chapter_1_1_0001")
+                const hrefPart = item.href.split('#')[0]; // Remove anchor
+                const chapterId = hrefPart.replace(/\.xhtml?$/i, ''); // Remove .xhtml or .xml extension
+                if (chapterId) {
+                    this.catalogMap.set(chapterId, item.text);
                 }
             }
         }

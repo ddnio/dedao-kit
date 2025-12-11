@@ -10,93 +10,93 @@
 
 ## Requirement Completeness
 
-- [ ] CHK001 - Are text alignment requirements specified for all paragraph types (standard, headers, footers)? [Completeness, Gap]
-- [ ] CHK002 - Are footnote detection criteria explicitly defined (image size thresholds AND class attributes)? [Completeness]
-- [ ] CHK003 - Are chapter metadata requirements documented (title, ID, level)? [Completeness, Gap]
-- [ ] CHK004 - Is the footnote icon deduplication strategy specified across chapters? [Completeness]
-- [ ] CHK005 - Are fallback requirements defined when chapter titles are unavailable from API? [Completeness, Gap]
-- [ ] CHK006 - Are all footnote scenarios addressed (with image, without image, with/without class)? [Completeness, Coverage]
-- [ ] CHK007 - Is cache invalidation and API response caching strategy documented? [Completeness, Gap]
+- [x] CHK001 - Are text alignment requirements specified for all paragraph types (standard, headers, footers)? [Completeness, Gap]
+- [x] CHK002 - Are footnote detection criteria explicitly defined (image size thresholds AND class attributes)? [Completeness]
+- [x] CHK003 - Are chapter metadata requirements documented (title, ID, level)? [Completeness, Gap]
+- [x] CHK004 - Is the footnote icon deduplication strategy specified across chapters? [Completeness]
+- [x] CHK005 - Are fallback requirements defined when chapter titles are unavailable from API? [Completeness, Gap]
+- [x] CHK006 - Are all footnote scenarios addressed (with image, without image, with/without class)? [Completeness, Coverage]
+- [x] CHK007 - Is cache invalidation and API response caching strategy documented? [Completeness, Gap]
 
 ## Requirement Clarity
 
-- [ ] CHK008 - Is the text alignment behavior quantified (e.g., "center threshold: 50% ± 10% of page width")? [Clarity, Spec: Alignment calculations]
-- [ ] CHK009 - Are footnote image size thresholds explicitly specified (width/height < 20px)? [Clarity]
-- [ ] CHK010 - Is the class attribute requirement for footnote detection unambiguous? [Clarity]
-- [ ] CHK011 - Are the default paragraph styles defined with specific CSS properties? [Clarity, Gap]
-- [ ] CHK012 - Is the chapter title character splitting behavior (split → wrap in `<b>` tags) explicitly documented? [Clarity, Gap]
-- [ ] CHK013 - Are footnote ID generation patterns specified (format: "footnote-3-<sequential_number>")? [Clarity]
-- [ ] CHK014 - Is HTML span management behavior defined for footnote insertion points? [Clarity, Ambiguity]
+- [x] CHK008 - Is the text alignment behavior quantified (e.g., "center threshold: 50% ± 10% of page width")? [Clarity, Spec: Alignment calculations]
+- [x] CHK009 - Are footnote image size thresholds explicitly specified (width/height < 20px)? [Clarity]
+- [x] CHK010 - Is the class attribute requirement for footnote detection unambiguous? [Clarity]
+- [x] CHK011 - Are the default paragraph styles defined with specific CSS properties? [Clarity, Gap]
+- [x] CHK012 - Is the chapter title character splitting behavior (split → wrap in `<b>` tags) explicitly documented? [Clarity, Gap]
+- [x] CHK013 - Are footnote ID generation patterns specified (format: "footnote-3-<sequential_number>")? [Clarity]
+- [x] CHK014 - Is HTML span management behavior defined for footnote insertion points? [Clarity, Ambiguity]
 
 ## Requirement Consistency
 
-- [ ] CHK015 - Are alignment requirements consistent across all XHTML chapter files? [Consistency]
-- [ ] CHK016 - Do footnote detection conditions match across SVG converter and download manager? [Consistency]
-- [ ] CHK017 - Are footnote ID generation patterns consistent with Go reference implementation? [Consistency, Spec: ID format]
-- [ ] CHK018 - Is chapter metadata extraction consistent between API response and EPUB generation? [Consistency, Gap]
-- [ ] CHK019 - Do image placeholder replacement patterns match between conversion and download phases? [Consistency]
-- [ ] CHK020 - Are EPUB package structure requirements aligned with standard (manifest, spine, toc)? [Consistency, Gap]
+- [x] CHK015 - Are alignment requirements consistent across all XHTML chapter files? [Consistency]
+- [x] CHK016 - Do footnote detection conditions match across SVG converter and download manager? [Consistency]
+- [x] CHK017 - Are footnote ID generation patterns consistent with Go reference implementation? [Consistency, Spec: ID format]
+- [x] CHK018 - Is chapter metadata extraction consistent between API response and EPUB generation? [Consistency, Gap]
+- [x] CHK019 - Do image placeholder replacement patterns match between conversion and download phases? [Consistency]
+- [x] CHK020 - Are EPUB package structure requirements aligned with standard (manifest, spine, toc)? [Consistency, Gap]
 
 ## Acceptance Criteria Quality
 
-- [ ] CHK021 - Can "text-align:center" detection be objectively verified with pixel thresholds? [Measurability]
-- [ ] CHK022 - Can footnote icon deduplication success be measured (image_000.png reuse count)? [Measurability]
-- [ ] CHK023 - Is the expected chapter title output measurable (character encoding, fallback ID format)? [Measurability, Gap]
-- [ ] CHK024 - Can footnote placement be objectively verified (inline within span, no span interruption)? [Measurability]
-- [ ] CHK025 - Is the API cache effectiveness measurable (response time reduction %)? [Measurability, Gap]
+- [x] CHK021 - Can "text-align:center" detection be objectively verified with pixel thresholds? [Measurability]
+- [x] CHK022 - Can footnote icon deduplication success be measured (image_000.png reuse count)? [Measurability]
+- [x] CHK023 - Is the expected chapter title output measurable (character encoding, fallback ID format)? [Measurability, Gap]
+- [x] CHK024 - Can footnote placement be objectively verified (inline within span, no span interruption)? [Measurability]
+- [x] CHK025 - Is the API cache effectiveness measurable (response time reduction %)? [Measurability, Gap]
 
 ## Scenario Coverage
 
-- [ ] CHK026 - Are requirements specified for left-aligned paragraphs (default behavior)? [Coverage]
-- [ ] CHK027 - Are requirements specified for center-aligned paragraphs? [Coverage]
-- [ ] CHK028 - Are requirements specified for right-aligned paragraphs? [Coverage]
-- [ ] CHK029 - Are footnotes with both SVG image AND class attribute addressed? [Coverage]
-- [ ] CHK030 - Are footnotes with SVG image but NO class attribute addressed? [Coverage, Gap]
-- [ ] CHK031 - Are chapters with empty/undefined titles addressed? [Coverage]
-- [ ] CHK032 - Are multi-page chapters with multiple footnote icons addressed? [Coverage, Gap]
-- [ ] CHK033 - Are concurrent chapter downloads with shared footnote icons addressed? [Coverage, Gap]
+- [x] CHK026 - Are requirements specified for left-aligned paragraphs (default behavior)? [Coverage]
+- [x] CHK027 - Are requirements specified for center-aligned paragraphs? [Coverage]
+- [x] CHK028 - Are requirements specified for right-aligned paragraphs? [Coverage]
+- [x] CHK029 - Are footnotes with both SVG image AND class attribute addressed? [Coverage]
+- [x] CHK030 - Are footnotes with SVG image but NO class attribute addressed? [Coverage, Gap]
+- [x] CHK031 - Are chapters with empty/undefined titles addressed? [Coverage]
+- [x] CHK032 - Are multi-page chapters with multiple footnote icons addressed? [Coverage, Gap]
+- [x] CHK033 - Are concurrent chapter downloads with shared footnote icons addressed? [Coverage, Gap]
 
 ## Edge Case Coverage
 
-- [ ] CHK034 - Is fallback behavior defined for missing chapter titles (use chapter.id)? [Edge Case]
-- [ ] CHK035 - Is the behavior specified when footnote icon image download fails? [Edge Case, Gap]
-- [ ] CHK036 - Are zero-footnote chapters handled? [Edge Case]
-- [ ] CHK037 - Is behavior defined for chapters with >100 footnotes? [Edge Case, Gap]
-- [ ] CHK038 - Is handling specified for whitespace-only chapter titles? [Edge Case]
-- [ ] CHK039 - Are very large footnote icons (width > 20px) explicitly treated as content images? [Edge Case]
-- [ ] CHK040 - Is the behavior specified when footnote icon cache is corrupted? [Edge Case, Gap]
+- [x] CHK034 - Is fallback behavior defined for missing chapter titles (use chapter.id)? [Edge Case]
+- [x] CHK035 - Is the behavior specified when footnote icon image download fails? [Edge Case, Gap]
+- [x] CHK036 - Are zero-footnote chapters handled? [Edge Case]
+- [x] CHK037 - Is behavior defined for chapters with >100 footnotes? [Edge Case, Gap]
+- [x] CHK038 - Is handling specified for whitespace-only chapter titles? [Edge Case]
+- [x] CHK039 - Are very large footnote icons (width > 20px) explicitly treated as content images? [Edge Case]
+- [x] CHK040 - Is the behavior specified when footnote icon cache is corrupted? [Edge Case, Gap]
 
 ## Non-Functional Requirements
 
-- [ ] CHK041 - Are performance requirements specified for footnote icon deduplication? [Non-Functional, Gap]
-- [ ] CHK042 - Is API cache TTL (time-to-live) specified for getBookInfo responses? [Non-Functional]
-- [ ] CHK043 - Are file size optimization targets specified for EPUB output? [Non-Functional, Gap]
-- [ ] CHK044 - Is memory usage limited for in-memory image caching? [Non-Functional, Gap]
-- [ ] CHK045 - Are EPUB accessibility requirements specified (alt text, semantic structure)? [Non-Functional, Gap]
+- [x] CHK041 - Are performance requirements specified for footnote icon deduplication? [Non-Functional, Gap]
+- [x] CHK042 - Is API cache TTL (time-to-live) specified for getBookInfo responses? [Non-Functional]
+- [x] CHK043 - Are file size optimization targets specified for EPUB output? [Non-Functional, Gap]
+- [x] CHK044 - Is memory usage limited for in-memory image caching? [Non-Functional, Gap]
+- [x] CHK045 - Are EPUB accessibility requirements specified (alt text, semantic structure)? [Non-Functional, Gap]
 
 ## Dependencies & Assumptions
 
-- [ ] CHK046 - Is dependency on Go project's SVG-to-HTML conversion documented? [Assumption, Traceability]
-- [ ] CHK047 - Is the assumption of "chapter IDs are unique" validated? [Assumption]
-- [ ] CHK048 - Are external dependencies documented (xmldom parser, crypto, HTTP client)? [Dependency]
-- [ ] CHK049 - Is the assumption of "footnote icon URLs are stable" validated? [Assumption, Gap]
-- [ ] CHK050 - Are API contract assumptions documented (response format, field availability)? [Assumption]
+- [x] CHK046 - Is dependency on Go project's SVG-to-HTML conversion documented? [Assumption, Traceability]
+- [x] CHK047 - Is the assumption of "chapter IDs are unique" validated? [Assumption]
+- [x] CHK048 - Are external dependencies documented (xmldom parser, crypto, HTTP client)? [Dependency]
+- [x] CHK049 - Is the assumption of "footnote icon URLs are stable" validated? [Assumption, Gap]
+- [x] CHK050 - Are API contract assumptions documented (response format, field availability)? [Assumption]
 
 ## Ambiguities & Conflicts
 
-- [ ] CHK051 - Does the spec clarify behavior when both width AND height are < 20px? [Ambiguity, Spec: Footnote detection]
-- [ ] CHK052 - Is there conflict between footnote icon deduplication and multi-format support (SVG vs PNG)? [Conflict, Gap]
-- [ ] CHK053 - Are there conflicts between alignment calculation methods for edge cases? [Conflict, Gap]
-- [ ] CHK054 - Is the priority defined when chapter.title conflicts with chapter.id? [Ambiguity]
-- [ ] CHK055 - Does the spec clarify deduplication scope (per-chapter vs global)? [Ambiguity, Spec: Global scope]
+- [x] CHK051 - Does the spec clarify behavior when both width AND height are < 20px? [Ambiguity, Spec: Footnote detection]
+- [x] CHK052 - Is there conflict between footnote icon deduplication and multi-format support (SVG vs PNG)? [Conflict, Gap]
+- [x] CHK053 - Are there conflicts between alignment calculation methods for edge cases? [Conflict, Gap]
+- [x] CHK054 - Is the priority defined when chapter.title conflicts with chapter.id? [Ambiguity]
+- [x] CHK055 - Does the spec clarify deduplication scope (per-chapter vs global)? [Ambiguity, Spec: Global scope]
 
 ## Traceability & References
 
-- [ ] CHK056 - Is each requirement traceable to Go reference code (svg2html.go, epub generation)? [Traceability, Gap]
-- [ ] CHK057 - Are EPUB standard requirements referenced (OPF, XHTML namespace, manifest)? [Traceability, Gap]
-- [ ] CHK058 - Are TypeScript implementation requirements linked to corresponding Go logic? [Traceability, Gap]
-- [ ] CHK059 - Is the SVG attribute mapping documented (x, y, class, width, height, href)? [Traceability, Gap]
-- [ ] CHK060 - Are test cases traced to specific requirements? [Traceability, Gap]
+- [x] CHK056 - Is each requirement traceable to Go reference code (svg2html.go, epub generation)? [Traceability, Gap]
+- [x] CHK057 - Are EPUB standard requirements referenced (OPF, XHTML namespace, manifest)? [Traceability, Gap]
+- [x] CHK058 - Are TypeScript implementation requirements linked to corresponding Go logic? [Traceability, Gap]
+- [x] CHK059 - Is the SVG attribute mapping documented (x, y, class, width, height, href)? [Traceability, Gap]
+- [x] CHK060 - Are test cases traced to specific requirements? [Traceability, Gap]
 
 ---
 
