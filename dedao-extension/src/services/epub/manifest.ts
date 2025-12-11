@@ -7,16 +7,20 @@ export class ManifestGenerator {
         const ncxItem = pkg.manifest.find(item => item.mediaType === 'application/x-dtbncx+xml');
         const ncxId = ncxItem ? ncxItem.id : 'ncx';
 
-        return `<?xml version="1.0" encoding="utf-8"?>
+    const metadata = [
+      `<dc:identifier id="BookId">${escapeXml(pkg.metadata.identifier)}</dc:identifier>`,
+      `<dc:title>${escapeXml(pkg.metadata.title)}</dc:title>`,
+      `<dc:language>${escapeXml(pkg.metadata.language)}</dc:language>`,
+      `<dc:creator>${escapeXml(pkg.metadata.creator)}</dc:creator>`,
+      pkg.metadata.description ? `<dc:description>${escapeXml(pkg.metadata.description)}</dc:description>` : '',
+      `<meta property="dcterms:modified">${new Date().toISOString().replace(/\.\d+Z$/, 'Z')}</meta>`,
+      pkg.metadata.coverId ? `<meta name="cover" content="${pkg.metadata.coverId}" />` : ''
+    ].filter(Boolean).join('\n    ');
+
+    return `<?xml version="1.0" encoding="utf-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" unique-identifier="BookId" version="3.0">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
-    <dc:identifier id="BookId">${escapeXml(pkg.metadata.identifier)}</dc:identifier>
-    <dc:title>${escapeXml(pkg.metadata.title)}</dc:title>
-    <dc:language>${escapeXml(pkg.metadata.language)}</dc:language>
-    <dc:creator>${escapeXml(pkg.metadata.creator)}</dc:creator>
-    ${pkg.metadata.description ? `<dc:description>${escapeXml(pkg.metadata.description)}</dc:description>` : ''}
-    <meta property="dcterms:modified">${new Date().toISOString().replace(/\.\d+Z$/, 'Z')}</meta>
-    ${pkg.metadata.coverId ? `<meta name="cover" content="${pkg.metadata.coverId}" />` : ''}
+    ${metadata}
   </metadata>
   <manifest>
     ${pkg.manifest.map(item => {

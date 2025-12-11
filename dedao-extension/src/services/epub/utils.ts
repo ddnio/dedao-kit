@@ -28,3 +28,29 @@ export function calculateProgress(current: number, total: number): number {
     return Math.min(100, Math.round((current / total) * 100));
 }
 
+/**
+ * Returns the standardized relative path that chapters should use to include the shared stylesheet.
+ */
+export function cssRelativePath(): string {
+    return '../css/cover.css';
+}
+
+export function cssResourcePath(): string {
+    return 'css/cover.css';
+}
+
+/**
+ * Returns the directory where chapter XHTML files are stored.
+ */
+export function chapterDirectory(): string {
+    return 'EPUB/xhtml';
+}
+
+/**
+ * Formats image resources using the `image_XXX.ext` naming convention.
+ */
+export function formatImageResourceFileName(index: number, extension: string): string {
+    const sanitizedExt = extension.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'png';
+    const padded = `${index}`.padStart(3, '0');
+    return `image_${padded}.${sanitizedExt}`;
+}

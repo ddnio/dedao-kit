@@ -5,7 +5,7 @@ import { EpubGenerator } from '../epub/generator.ts';
 import { DownloadTask, TaskStatus, ProgressInfo, TaskError } from '../../types/download.ts';
 import { EpubPackage, ManifestItem, SpineItem, EpubResource, NavPoint } from '../../types/epub.ts';
 import { EbookMetadata, Chapter } from '../../types/ebook.ts';
-import { sanitizeId, escapeXml, calculateProgress } from '../epub/utils.ts';
+import { sanitizeId, escapeXml, calculateProgress, cssRelativePath, cssResourcePath, formatImageResourceFileName } from '../epub/utils.ts';
 import { logger } from '../../utils/logger.ts';
 
 export class DownloadManager {
@@ -16,6 +16,7 @@ export class DownloadManager {
     private urlToIdMap = new Map<string, { id: string, href: string }>(); // Cache for image deduplication
     private footnoteIconUrl: string | undefined; // Global footnote icon URL (reused across whole book)
     private footnoteIconId: string | undefined; // ID of the footnote icon
+    private chapterIdMap = new Map<string, string>(); // Maps chapter.id to Chapter_X_Y format
 
     constructor() {
         // Pass footnote counter getter to converter
@@ -31,6 +32,7 @@ export class DownloadManager {
         this.imageCounter = 0;
         this.footnoteCounter = 0;
         this.urlToIdMap.clear();
+        this.chapterIdMap.clear();
         this.footnoteIconUrl = undefined;
         this.footnoteIconId = undefined;
 
@@ -62,6 +64,9 @@ export class DownloadManager {
 
             updateProgress('Fetching book info...', 5, 100);
             const bookInfo = await ebookApi.getBookInfo(token);
+
+            // Initialize chapter ID mapping (Chapter_X_Y format)
+            this.initializeChapterIdMapping(bookInfo.chapters || []);
 
             // Initialize EpubPackage with detailed metadata from both endpoints
             const pkg: EpubPackage = {
@@ -129,7 +134,7 @@ export class DownloadManager {
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
   <head>
     <title>${escapeXml(pkg.metadata.title || 'Cover')}</title>
-    <link rel="stylesheet" type="text/css" href="style.css"></link>
+    <link rel="stylesheet" type="text/css" href="css/cover.css"></link>
   </head>
   <body>
 <img src="${coverInfo.href}" alt="Cover Image" />
@@ -175,12 +180,8 @@ img {
   max-width: 100%;
 }
 `;
-            // Resource href is now css/cover.css to match new structure
-            pkg.resources.push({ id: 'css', href: 'style.css', mediaType: 'text/css', content: cssContent });
-            // Manifest href should also be updated? 
-            // Generator handles 'style.css' href specially to write to 'css/cover.css'.
-            // But we should update the link in XHTML.
-            pkg.manifest.push({ id: 'css', href: 'css/cover.css', mediaType: 'text/css' });
+            pkg.resources.push({ id: 'css', href: cssResourcePath(), mediaType: 'text/css', content: cssContent });
+            pkg.manifest.push({ id: 'css', href: cssResourcePath(), mediaType: 'text/css' });
 
             // Process Chapters
             const chapters = bookInfo.chapters || [];
@@ -197,28 +198,28 @@ img {
                 // If level is missing, default to 1. Go might use 0 for intro?
                 // Ref Chapter_1_1 (Intro) uses header0. Ref Chapter_1_1_0001 (Article) uses header1.
                 // Assuming chapter.level maps to this.
-                const headerClass = `header${chapter.level !== undefined ? chapter.level : 1}`;
+            const chapterIdentifier = this.buildChapterIdentifier(chapter);
+            const headerClass = `header${chapter.level !== undefined ? chapter.level : 1}`;
 
-                // Process content
-                // Note: CSS link uses relative path - XHTML files are in EPUB/xhtml/, CSS is at EPUB/css/cover.css
-                // So we need ../css/cover.css to go up one level then into css
-                // Split title into individual characters and wrap each in <b> tags
-                const title = (chapter.title && chapter.title.trim()) || ''; // Ensure title is not just whitespace
-                const titleChars = title ? title.split('').map(char => `<b>${escapeXml(char)}</b>`).join('') : '';
+            const title = (chapter.title && chapter.title.trim()) || chapterIdentifier;
+            const titleChars = title ? title.split('').map(char => `<b>${escapeXml(char)}</b>`).join('') : '';
 
-                let chapterHtml = `<?xml version="1.0" encoding="UTF-8"?>
+            let chapterHtml = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
 <head>
-    <title>${escapeXml(title || chapter.id)}</title>
-    <link rel="stylesheet" type="text/css" href="../css/cover.css"/>
+    <title>${escapeXml(title)}</title>
+    <link rel="stylesheet" type="text/css" href="${cssRelativePath()}"/>
 </head>
 <body>
 
-<div id="${sanitizeId(chapter.id)}">
-</div><div class="${headerClass}"><h2><span style="font-size:19px;font-weight: bold;color:rgb(0, 0, 0);font-family:'PingFang SC';display: block;text-align:center;">${titleChars}</span></h2></div>
+<div id="${chapterIdentifier}"></div><div class="${headerClass}"><h2><span style="font-size:19px;font-weight: bold;color:rgb(0, 0, 0);font-family:'PingFang SC';display: block;text-align:center;">${titleChars}</span></h2></div>
 <div class="part">`;
+
+            // Collect all footnotes from all pages first
+            const allChapterFootnotes: { id: string, text: string }[] = [];
                                 
+            let pageContents = '';
                                 for (const page of pagesResponse) {
                                                         const decryptedSvg = AESCrypto.decrypt(page.content); // page.content is encrypted string
                                                         // Use new converter with chapterId, it now returns HTML with placeholders and footnotes
@@ -227,6 +228,11 @@ img {
                                                         // Capture first footnote icon URL for global reuse
                                                         if (pageFootnoteIconUrl && !this.footnoteIconUrl) {
                                                             this.footnoteIconUrl = pageFootnoteIconUrl;
+                                                        }
+
+                                                        // Collect footnotes
+                                                        if (pageFootnotes && pageFootnotes.length > 0) {
+                                                            allChapterFootnotes.push(...pageFootnotes);
                                                         }
 
                                                         let processedChapterHtml = convertedHtml; // Work on a mutable copy of the HTML fragment
@@ -295,8 +301,8 @@ img {
                                                                             const currentImageIndex = this.imageCounter;
                                                                             this.imageCounter++;
 
-                                                                            const imgFilename = `image_${String(currentImageIndex).padStart(3, '0')}.${imgExt}`;
-                                                                            const imgId = `image_${String(currentImageIndex).padStart(3, '0')}`;
+                                                                            const imgFilename = formatImageResourceFileName(currentImageIndex, imgExt);
+                                                                            const imgId = imgFilename.replace(/\.[^.]+$/, '');
 
                                                                             imgInfo = { id: imgId, href: `images/${imgFilename}` };
                                                                             this.urlToIdMap.set(normalizedImgUrl, imgInfo);
@@ -331,24 +337,23 @@ img {
                                                             }
                                                         }
                                     
-                                                        // Append footnotes collected from this page at the BEGINNING of the part (or before content)
-                                                        // Reference puts footnotes inside div.part, before <p> tags.
-                                                        // Since we iterate pages, we might have multiple sets of footnotes.
-                                                        // We should append them to chapterHtml before appending processedChapterHtml.
-                                                        for (const fn of pageFootnotes) {
-                                                            chapterHtml += `<aside epub:type="footnote" id="${fn.id}"><ol class="duokan-footnote-content" style="list-style:none;padding:0px;margin:0px;"><li class="duokan-footnote-item" id="${fn.id}">${fn.text}</li></ol></aside>`;
-                                                        }
-                                                        
-                                                        chapterHtml += processedChapterHtml;
+                                                        pageContents += processedChapterHtml;
                                                     }
-                                    
+
+                                    // Add all footnotes FIRST (at the start of div.part), then page contents
+                                    for (const fn of allChapterFootnotes) {
+                                        chapterHtml += `<aside epub:type="footnote" id="${fn.id}"><ol class="duokan-footnote-content" style="list-style:none;padding:0px;margin:0px;"><li class="duokan-footnote-item" id="${fn.id}">${fn.text}</li></ol></aside>`;
+                                    }
+
+                                    chapterHtml += pageContents;
+
                                     chapterHtml += `</div>
 </body>
 </html>`;
 
-                const cleanedChapterId = chapter.id.replace(/\.xhtml$/i, ''); // Remove .xhtml if already present
-                const filename = `${sanitizeId(cleanedChapterId)}.xhtml`; // Removed 'chapter_' prefix
-                const resourceId = sanitizeId(cleanedChapterId); 
+                const cleanedChapterId = chapterIdentifier.replace(/\.xhtml$/i, '');
+                const filename = `${cleanedChapterId}.xhtml`;
+                const resourceId = cleanedChapterId;
 
                 pkg.resources.push({
                     id: resourceId,
@@ -465,6 +470,51 @@ img {
 
     private escapeRegExp(string: string): string {
         return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
+    }
+
+    /**
+     * Initialize chapter ID mapping to generate Chapter_X_Y identifiers
+     * Builds a hierarchy-based numbering system matching the Go reference format
+     */
+    private initializeChapterIdMapping(chapters: Chapter[]): void {
+        const topLevelMap = new Map<string, number>(); // Maps parentId to next child index
+        let topLevelIndex = 1;
+
+        for (const chapter of chapters) {
+            if (!chapter.parentId) {
+                // Top-level chapter
+                const key = `${topLevelIndex}_1`;
+                this.chapterIdMap.set(chapter.id, `Chapter_${key}`);
+                topLevelMap.set(chapter.id, 1); // Track first child index for this top-level
+                topLevelIndex++;
+            }
+        }
+
+        // Second pass: assign child chapter IDs
+        for (const chapter of chapters) {
+            if (chapter.parentId) {
+                // Child chapter - find parent's top-level index
+                const parentEntry = this.chapterIdMap.get(chapter.parentId);
+                if (parentEntry && parentEntry.startsWith('Chapter_')) {
+                    // Extract parent's top-level number
+                    const match = parentEntry.match(/Chapter_(\d+)_/);
+                    if (match) {
+                        const parentTopLevelIndex = match[1];
+                        const nextChildIndex = (topLevelMap.get(chapter.parentId) || 1) + 1;
+                        const key = `${parentTopLevelIndex}_${nextChildIndex}`;
+                        this.chapterIdMap.set(chapter.id, `Chapter_${key}`);
+                        topLevelMap.set(chapter.parentId, nextChildIndex);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Get the chapter identifier in Chapter_X_Y format
+     */
+    private buildChapterIdentifier(chapter: Chapter): string {
+        return this.chapterIdMap.get(chapter.id) || `Chapter_unknown`;
     }
 
     private normalizeUrl(url: string): string {

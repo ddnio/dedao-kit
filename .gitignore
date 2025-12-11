@@ -1,0 +1,68 @@
+# Node.js / npm
+node_modules/
+npm-debug.log*
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+.npm
+.yarn
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# Development
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+*.iml
+*.user
+*.sublime-project
+*.sublime-workspace
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+
+# Coverage
+coverage/
+*.lcov
+
+# Vite
+.vite/
+
+# Cache
+.cache/
+.eslintcache
+
+# OS
+.DS_Store
+
+# Temporary
+tmp/
+temp/
+.specify/tmp/
+
+# Build artifacts from extensions
+dist-scripts/
+dist-test/
+
+# Test outputs
+.jest/
+
+# EPUB files (generated)
+*.epub
+dedao_*.epub

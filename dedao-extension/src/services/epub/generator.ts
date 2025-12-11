@@ -2,6 +2,7 @@ import JSZip from 'jszip';
 import { EpubPackage } from '../../types/epub.ts';
 import { ManifestGenerator } from './manifest.ts';
 import { NavGenerator } from './nav.ts';
+import { logger } from '../../utils/logger.ts';
 
 export class EpubGenerator {
     async generate(pkg: EpubPackage): Promise<Blob> {
@@ -33,16 +34,10 @@ export class EpubGenerator {
             if (res.href.startsWith('images/')) {
                 // Images go to EPUB/images/
                 epub.file(res.href, content);
-            } else if (res.href === 'style.css') {
-                // CSS goes to EPUB/css/cover.css (renaming from style.css to css/cover.css)
-                // However, the resource href might still be style.css from manager.
-                // We should probably rely on href being correct from manager, 
-                // BUT the requirement says to change write path here if needed.
-                // Let's assume manager sends href='css/cover.css' or similar?
-                // Actually Task T003 says "Change write path from EPUB/style.css to EPUB/css/cover.css".
-                // If the resource comes in as 'style.css', we force it to 'css/cover.css'.
-                
-                // Ensure css folder exists
+            } else if (res.href === 'style.css' || res.href === 'css/cover.css' || res.href.endsWith('/cover.css')) {
+                if (res.href !== 'css/cover.css') {
+                    logger.warn(`CSS resource path mismatch: expected css/cover.css but got ${res.href}`);
+                }
                 const cssFolder = epub.folder('css')!;
                 cssFolder.file('cover.css', content);
             } else if (res.href.endsWith('.xhtml') &&
