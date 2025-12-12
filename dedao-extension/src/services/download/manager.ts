@@ -19,6 +19,7 @@ export class DownloadManager {
     private footnoteIconId: string | undefined; // ID of the footnote icon
     private chapterIdMap = new Map<string, string>(); // Maps chapter.id to Chapter_X_Y format
     private catalogMap = new Map<string, string>(); // Maps Chapter_X_Y to catalog title (TOC-driven)
+    private autoChapterCounter = 1; // fallback counter for missing chapter ids
 
     constructor() {
         // Pass footnote counter getter to converter
@@ -39,6 +40,7 @@ export class DownloadManager {
         this.catalogMap.clear();
         this.footnoteIconUrl = undefined;
         this.footnoteIconId = undefined;
+        this.autoChapterCounter = 1;
 
         const task: DownloadTask = {
             bookId,
@@ -102,13 +104,12 @@ export class DownloadManager {
                         coverBlob = await this.downloadImage(coverUrl);
                         if (coverBlob) {
                             let coverImageExt = (coverBlob.type && coverBlob.type.split('/')[1]) || 'jpg';
-                            // Normalize svg+xml to svg
                             if (coverImageExt === 'svg+xml') coverImageExt = 'svg';
+                            if (coverImageExt === 'jpeg') coverImageExt = 'jpg';
 
-                            // Cover naming to match reference which likely uses 'cover.jpg' separately
-                            // Reference has 'EPUB/images/cover.jpg' and 'EPUB/images/image_000.png' (content)
+                            // Cover naming aligns with Go: images/cover.jpg
                             const coverImageFilename = `cover.${coverImageExt}`;
-                            const coverImageId = `cover-image`; // Match standard ID often used
+                            const coverImageId = coverImageFilename;
 
                             // Content images start at 000
                             this.imageCounter = 0; 
@@ -136,37 +137,59 @@ export class DownloadManager {
 
                         // Add cover.xhtml - matching Go version format for simplicity
                         // Cover page should be simple and clean
+                        const coverImgPath = coverInfo.href.startsWith('images/')
+                            ? `../${coverInfo.href}`
+                            : coverInfo.href;
                         const coverHtml = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
   <head>
     <title>${escapeXml(pkg.metadata.title || 'Cover')}</title>
-    <link rel="stylesheet" type="text/css" href="css/cover.css"></link>
+    <link rel="stylesheet" type="text/css" href="${cssRelativePath()}"></link>
   </head>
   <body>
-<img src="${coverInfo.href}" alt="Cover Image" />
+<img src="${coverImgPath}" alt="Cover Image" />
   </body>
 </html>`;
                         // Note: coverInfo.href is relative to EPUB root (images/...)
                         // cover.xhtml is also at EPUB root, so no path adjustment needed
                         
                         pkg.resources.push({
-                            id: 'cover-page',
+                            id: 'cover.xhtml',
                             href: 'cover.xhtml',
                             mediaType: 'application/xhtml+xml',
                             content: coverHtml
                         });
                         pkg.manifest.push({
-                            id: 'cover-page',
+                            id: 'cover.xhtml',
                             href: 'cover.xhtml',
                             mediaType: 'application/xhtml+xml'
                         });
                         // Add to spine start
-                        pkg.spine.unshift({ idref: 'cover-page' });
+                        pkg.spine.unshift({ idref: 'cover.xhtml' });
                     }
                 } catch (e) {
                     logger.warn('Failed to download cover', e);
                 }
+            }
+
+            // Add Copyright page (align with Go layout, placed after cover)
+            const copyrightHtml = this.buildCopyrightPage(detail, pkg);
+            pkg.resources.push({
+                id: 'Copyright.xhtml',
+                href: 'Copyright.xhtml',
+                mediaType: 'application/xhtml+xml',
+                content: copyrightHtml
+            });
+            pkg.manifest.push({
+                id: 'Copyright.xhtml',
+                href: 'Copyright.xhtml',
+                mediaType: 'application/xhtml+xml'
+            });
+            if (pkg.spine.length > 0) {
+                pkg.spine.splice(1, 0, { idref: 'Copyright.xhtml' });
+            } else {
+                pkg.spine.push({ idref: 'Copyright.xhtml' });
             }
 
             // Build TOC structure for EPUB (NavPoints)
@@ -202,21 +225,22 @@ img {
                 const pagesResponse = await this.fetchAllPages(chapter.id, token);
                 
                 // Determine header level (Go matches 'header' + level)
-                // If level is missing, default to 1. Go might use 0 for intro?
-                // Ref Chapter_1_1 (Intro) uses header0. Ref Chapter_1_1_0001 (Article) uses header1.
-                // Assuming chapter.level maps to this.
+                // Default to 0 for top-level sections.
             const chapterIdentifier = this.buildChapterIdentifier(chapter);
-            const level = chapter.level !== undefined ? chapter.level : 1;
+            let level: number;
+            if (chapter.level !== undefined) {
+                level = chapter.level;
+            } else {
+                // 章节层级缺失时，根据 ID 兜底：带 _0001 视为正文（header1），否则视为分卷标题（header0）
+                level = /_0001/i.test(chapterIdentifier) ? 1 : 0;
+            }
             const headerClass = `header${level}`;
 
             // Choose heading tag based on level: level 0 -> h1, level 1 -> h2, etc.
             const headingTag = `h${Math.min(level + 1, 6)}`; // h1 to h6
             const tocId = `sigil_toc_id_${++this.tocIdCounter}`;
 
-            // Title lookup: priority: catalogMap -> chapter.title -> chapterIdentifier
-            let title = this.catalogMap.get(chapterIdentifier)
-                || (chapter.title && chapter.title.trim())
-                || chapterIdentifier;
+            const title = this.resolveChapterTitle(chapterIdentifier, chapter.title);
             const titleChars = title ? title.split('').map(char => `<b>${escapeXml(char)}</b>`).join('') : '';
 
             let chapterHtml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -300,10 +324,10 @@ img {
                                                                         // Handle cover image
                                                                         let ext = 'jpg';
                                                                         if (imgUrl.includes('.png')) ext = 'png';
-                                                                        else if (imgUrl.includes('.jpeg') || imgUrl.includes('.jpg')) ext = 'jpeg';
+                                                                        else if (imgUrl.includes('.jpeg') || imgUrl.includes('.jpg')) ext = 'jpg';
 
                                                                         const coverFilename = `cover.${ext}`;
-                                                                        imgInfo = { id: 'cover-image', href: `images/${coverFilename}` };
+                                                                        imgInfo = { id: coverFilename, href: `images/${coverFilename}` };
                                                                         this.urlToIdMap.set(normalizedImgUrl, imgInfo);
                                                                     } else {
                                                                         // Regular image, download it
@@ -311,6 +335,7 @@ img {
                                                                         if (imgBlob) {
                                                                             let imgExt = (imgBlob.type && imgBlob.type.split('/')[1]) || 'jpg';
                                                                             if (imgExt === 'svg+xml') imgExt = 'svg';
+                                                                                if (imgExt === 'jpeg') imgExt = 'jpg';
 
                                                                             // Skip index 0 if it's used for footnote icon
                                                                             const currentImageIndex = this.imageCounter;
@@ -366,9 +391,8 @@ img {
 </body>
 </html>`;
 
-                const cleanedChapterId = chapterIdentifier.replace(/\.xhtml$/i, '');
-                const filename = `${cleanedChapterId}.xhtml`;
-                const resourceId = cleanedChapterId;
+                const filename = chapterIdentifier;
+                const resourceId = chapterIdentifier;
 
                 pkg.resources.push({
                     id: resourceId,
@@ -471,11 +495,8 @@ img {
             // Assuming originalHref is chapterId
             const originalHref = (np as any).originalHref;
             if (originalHref) {
-                // If originalHref contains .xhtml, maybe it's already correct?
-                // Usually it's just ID.
-                // We mapped chapter files to `chapter_${sanitizeId(id)}.xhtml`.
-                // So if originalHref is `ch_001`, target is `chapter_ch_001.xhtml`.
-                np.contentSrc = `${sanitizeId(originalHref)}.xhtml`; // Removed 'chapter_' prefix
+                const baseHref = originalHref.split('#')[0];
+                np.contentSrc = baseHref || sanitizeId(originalHref);
             }
             if (np.children) {
                 this.fixTocHrefs(np.children);
@@ -492,37 +513,17 @@ img {
      * Builds a hierarchy-based numbering system matching the Go reference format
      */
     private initializeChapterIdMapping(chapters: Chapter[]): void {
-        const topLevelMap = new Map<string, number>(); // Maps parentId to next child index
-        let topLevelIndex = 1;
+        this.chapterIdMap.clear();
+        this.autoChapterCounter = 1;
 
-        for (const chapter of chapters) {
-            if (!chapter.parentId) {
-                // Top-level chapter
-                const key = `${topLevelIndex}_1`;
-                this.chapterIdMap.set(chapter.id, `Chapter_${key}`);
-                topLevelMap.set(chapter.id, 1); // Track first child index for this top-level
-                topLevelIndex++;
+        chapters.forEach((chapter, index) => {
+            const baseId = chapter.id ? sanitizeId(String(chapter.id)) : `Chapter_${index + 1}`;
+            if (chapter.id) {
+                this.chapterIdMap.set(String(chapter.id), baseId);
+            } else {
+                this.chapterIdMap.set(`__auto_${index}`, baseId);
             }
-        }
-
-        // Second pass: assign child chapter IDs
-        for (const chapter of chapters) {
-            if (chapter.parentId) {
-                // Child chapter - find parent's top-level index
-                const parentEntry = this.chapterIdMap.get(chapter.parentId);
-                if (parentEntry && parentEntry.startsWith('Chapter_')) {
-                    // Extract parent's top-level number
-                    const match = parentEntry.match(/Chapter_(\d+)_/);
-                    if (match) {
-                        const parentTopLevelIndex = match[1];
-                        const nextChildIndex = (topLevelMap.get(chapter.parentId) || 1) + 1;
-                        const key = `${parentTopLevelIndex}_${nextChildIndex}`;
-                        this.chapterIdMap.set(chapter.id, `Chapter_${key}`);
-                        topLevelMap.set(chapter.parentId, nextChildIndex);
-                    }
-                }
-            }
-        }
+        });
     }
 
     /**
@@ -535,9 +536,13 @@ img {
                 // Extract chapter ID from href (e.g. "Chapter_1_1_0001.xhtml#..." -> "Chapter_1_1_0001")
                 const hrefPart = item.href.split('#')[0]; // Remove anchor
                 const chapterId = hrefPart.replace(/\.xhtml?$/i, ''); // Remove .xhtml or .xml extension
-                if (chapterId) {
-                    this.catalogMap.set(chapterId, item.text);
-                }
+                const candidates = [
+                    chapterId,
+                    hrefPart,
+                    sanitizeId(chapterId),
+                    sanitizeId(hrefPart)
+                ].filter(Boolean);
+                candidates.forEach(key => this.catalogMap.set(key, item.text));
             }
         }
     }
@@ -546,7 +551,67 @@ img {
      * Get the chapter identifier in Chapter_X_Y format
      */
     private buildChapterIdentifier(chapter: Chapter): string {
-        return this.chapterIdMap.get(chapter.id) || `Chapter_unknown`;
+        if (chapter.id && this.chapterIdMap.has(chapter.id)) {
+            return this.chapterIdMap.get(chapter.id)!;
+        }
+        if (chapter.id) {
+            return sanitizeId(String(chapter.id));
+        }
+        return `Chapter_${this.autoChapterCounter++}`;
+    }
+
+    private resolveChapterTitle(chapterIdentifier: string, rawTitle?: string): string {
+        const candidates = [
+            chapterIdentifier,
+            chapterIdentifier.replace(/\.xhtml$/i, ''),
+            sanitizeId(chapterIdentifier),
+            sanitizeId(chapterIdentifier.replace(/\.xhtml$/i, '')),
+            rawTitle?.trim()
+        ].filter(Boolean) as string[];
+
+        for (const key of candidates) {
+            const hit = this.catalogMap.get(key);
+            if (hit) return hit;
+        }
+
+        return rawTitle?.trim() || chapterIdentifier;
+    }
+
+    private buildCopyrightPage(detail: any, pkg: EpubPackage): string {
+        const bookName = escapeXml(detail?.title || detail?.operating_title || pkg.metadata.title || '');
+        const author = escapeXml(detail?.book_author || pkg.metadata.creator || '');
+        const press = escapeXml(detail?.press || detail?.publisher || detail?.pressName || '');
+        const publication = escapeXml(detail?.publish_time || detail?.publication_date || detail?.publishDate || detail?.publish || '');
+        const isbn = escapeXml(detail?.isbn || detail?.book_isbn || '');
+        const wordCountRaw = detail?.word || detail?.word_count || '';
+        const wordCount = wordCountRaw ? escapeXml(`${wordCountRaw}${typeof wordCountRaw === 'number' ? '字' : ''}`) : '';
+        const comment = escapeXml(detail?.copyright || detail?.copyright_info || detail?.comment || '');
+        const comment2 = escapeXml(detail?.comment2 || detail?.copyright2 || '版权所有·侵权必究');
+
+        return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <head>
+    <title>版权信息</title>
+  </head>
+  <body>
+
+<div id="Copyright.xhtml">
+</div><div class="header0"><h1><span id="magic_copyright_title" style="font-size:22px;font-weight: bold;color:rgb(0, 0, 0);font-family:'PingFang SC';display: block;text-align:center;"><b>版</b><b>权</b><b>信</b><b>息</b></span></h1></div>
+<div class="part">
+    <p><span id="magic_copyright_entitle" style="font-size:9px;font-weight: bold;color:rgb(120, 120, 120);font-family:'PingFang SC';display: block;text-align:center;"><b>C</b><b>O</b><b>P</b><b>Y</b><b>R</b><b>I</b><b>G</b><b>H</b><b>T</b></span></p>
+    <p><span id="bookname" style="font-size:16px;font-family:'PingFang SC';">书名：${bookName}</span></p>
+    <p><span id="author" style="font-size:16px;font-family:'PingFang SC';">作者：${author}</span></p>
+    <p><span id="press" style="font-size:16px;font-family:'PingFang SC';">出版社：${press}</span></p>
+    <p><span id="publicationdate" style="font-size:16px;font-family:'PingFang SC';">出版时间：${publication}</span></p>
+    <p><span id="isbn" style="font-size:16px;font-family:'PingFang SC';">ISBN：${isbn}</span></p>
+    <p><span id="word" style="font-size:16px;font-family:'PingFang SC';">字数：${wordCount}</span></p>
+    <p><span id="comment" style="font-size:16px;font-family:'PingFang SC';">${comment || '本书由得到授权制作电子版发行'}</span></p>
+    <p><span id="comment2" style="font-size:16px;font-family:'PingFang SC';">${comment2}</span></p></div>
+
+
+</body>
+</html>`;
     }
 
     private normalizeUrl(url: string): string {

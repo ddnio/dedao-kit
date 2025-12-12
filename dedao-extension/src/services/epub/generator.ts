@@ -31,7 +31,11 @@ export class EpubGenerator {
             }
 
             // Categorize resources into subdirectories
-            if (res.href.startsWith('images/')) {
+            if (res.mediaType === 'application/xhtml+xml') {
+                const xhtmlFolder = epub.folder('xhtml')!;
+                const filename = res.href.startsWith('xhtml/') ? res.href.replace(/^xhtml\//, '') : res.href;
+                xhtmlFolder.file(filename, content);
+            } else if (res.href.startsWith('images/')) {
                 // Images go to EPUB/images/
                 epub.file(res.href, content);
             } else if (res.href === 'style.css' || res.href === 'css/cover.css' || res.href.endsWith('/cover.css')) {
@@ -40,12 +44,6 @@ export class EpubGenerator {
                 }
                 const cssFolder = epub.folder('css')!;
                 cssFolder.file('cover.css', content);
-            } else if (res.href.endsWith('.xhtml') &&
-                       res.href !== 'cover.xhtml' &&
-                       res.href !== 'Copyright.xhtml') {
-                // Chapter XHTML files go to EPUB/xhtml/ subdirectory
-                const xhtmlFolder = epub.folder('xhtml')!;
-                xhtmlFolder.file(res.href, content);
             } else {
                 // cover.xhtml, Copyright.xhtml, style.css, nav.xhtml go to EPUB root
                 epub.file(res.href, content);

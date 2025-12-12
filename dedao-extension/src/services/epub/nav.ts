@@ -34,8 +34,8 @@ export class NavGenerator {
     /**
      * Normalize href to correct relative path for EPUB structure:
      * - Remove editor-generated markers (_sigil_toc_id_, _magic_)
-     * - Ensure .xhtml extension
-     * - Add xhtml/ prefix for chapter files (except cover.xhtml, Copyright.xhtml)
+     * - 保留来源扩展名（不强制追加 .xhtml，以匹配 Go 产物）
+     * - 为章节类文件追加 xhtml/ 前缀（nav.xhtml 仍在根目录）
      * - Return path relative to nav.xhtml (which is at EPUB/ root)
      */
     private normalizeHref(href: string): string {
@@ -46,17 +46,8 @@ export class NavGenerator {
             .replace(/_sigil_toc_id_\d+/g, '')
             .replace(/_magic_[^/]*/g, '');
 
-        // Step 2: Ensure .xhtml extension
-        if (!normalized.endsWith('.xhtml')) {
-            normalized = normalized + '.xhtml';
-        }
-
-        // Step 3: Add xhtml/ prefix for chapter files
-        // Exception: cover.xhtml, Copyright.xhtml should not have prefix
-        // They are at EPUB/ root (nav.xhtml is also at root, so no prefix needed)
+        // Step 2: Add xhtml/ prefix for chapter files (nav stays at root)
         if (!normalized.startsWith('xhtml/') &&
-            normalized !== 'cover.xhtml' &&
-            normalized !== 'Copyright.xhtml' &&
             normalized !== 'nav.xhtml') {
             normalized = 'xhtml/' + normalized;
         }

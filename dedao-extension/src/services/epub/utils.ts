@@ -1,6 +1,7 @@
 export function escapeXml(unsafe: string): string {
-    if (!unsafe) return '';
-    return unsafe.replace(/[<>&'\\"]/g, (c) => {
+    if (unsafe === undefined || unsafe === null) return '';
+    const str = String(unsafe);
+    return str.replace(/[<>&'\\"]/g, (c) => {
         switch (c) {
             case '<': return '&lt;';
             case '>': return '&gt;';
@@ -51,6 +52,7 @@ export function chapterDirectory(): string {
  */
 export function formatImageResourceFileName(index: number, extension: string): string {
     const sanitizedExt = extension.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'png';
+    const normalizedExt = sanitizedExt === 'jpeg' ? 'jpg' : sanitizedExt;
     const padded = `${index}`.padStart(3, '0');
-    return `image_${padded}.${sanitizedExt}`;
+    return `image_${padded}.${normalizedExt}`;
 }

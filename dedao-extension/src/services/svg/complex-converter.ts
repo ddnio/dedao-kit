@@ -302,15 +302,19 @@ export class ComplexSvgConverter {
                                 lineHtml += `<span style="${currentSpanStyle}">`;
                             }
                         } else {
-                            // Footnote icon - use pure text format [[n]] instead of image icon
-                            // Use simple sequential footnote numbers like Go does: footnote-3-<num>
+                            // Footnote icon handling: keep image icon like Go version
                             const footnoteNum = this.getNextFootnoteNum ? this.getNextFootnoteNum() : this.footnoteCounter++;
                             const footnoteId = `footnote-3-${footnoteNum}`;
                             const footnoteText = this.escapeHtml(item.alt);
                             footnotes.push({ id: footnoteId, text: footnoteText });
 
-                            // Insert pure text format: [[n]]
-                            lineHtml += ` <sup><a class="duokan-footnote" epub:type="noteref" href="#${footnoteId}">[[${footnoteNum}]]</a></sup>`;
+                            // Capture first icon URL for global download
+                            if (!footnoteIconUrl) {
+                                footnoteIconUrl = item.href;
+                            }
+
+                            const iconSrc = '../images/image_000.png';
+                            lineHtml += ` <sup><a class="duokan-footnote" epub:type="noteref" href="#${footnoteId}"> <img width="10" src="${iconSrc}" alt="${footnoteText}" class="epub-footnote zhangyue-footnote qqreader-footnote"/></a></sup>`;
                         }
                     }
                 } else if (item.name === 'text') {

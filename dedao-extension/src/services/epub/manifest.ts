@@ -28,8 +28,6 @@ export class ManifestGenerator {
         let href = item.href;
         if (item.mediaType === 'application/xhtml+xml' &&
             !href.startsWith('xhtml/') &&
-            href !== 'cover.xhtml' &&
-            href !== 'Copyright.xhtml' &&
             href !== 'nav.xhtml') {
             href = 'xhtml/' + href;
         }
