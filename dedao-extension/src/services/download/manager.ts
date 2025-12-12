@@ -380,6 +380,10 @@ img {
                                                         pageContents += processedChapterHtml;
                                                     }
 
+                                    // Remove重复标题（父级/当前）避免二次显示
+                                    const parentTitle = chapter.parentId ? this.catalogMap.get(this.chapterIdMap.get(chapter.parentId) || sanitizeId(chapter.parentId)) : undefined;
+                                    pageContents = this.removeDuplicateTitles(pageContents, [title, parentTitle].filter(Boolean) as string[]);
+
                                     // Add all footnotes FIRST (at the start of div.part), then page contents
                                     for (const fn of allChapterFootnotes) {
                                         chapterHtml += `<aside epub:type="footnote" id="${fn.id}"><ol class="duokan-footnote-content" style="list-style:none;padding:0px;margin:0px;"><li class="duokan-footnote-item" id="${fn.id}">${fn.text}</li></ol></aside>`;
@@ -575,6 +579,27 @@ img {
         }
 
         return rawTitle?.trim() || chapterIdentifier;
+    }
+
+    /**
+     * 去重内容中的标题行，防止SVG正文里再出现一次目录标题/章节标题
+     */
+    private removeDuplicateTitles(content: string, titles: string[]): string {
+        let result = content;
+        for (const t of titles) {
+            const escaped = t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const boldChars = t.split('').map(ch => `<b>${ch}</b>`).join('\\s*');
+
+            const patterns = [
+                new RegExp(`<p[^>]*>\\s*<span[^>]*>\\s*${escaped}\\s*</span>\\s*</p>`, 'g'),
+                new RegExp(`<p[^>]*>\\s*<span[^>]*>\\s*${boldChars}\\s*</span>\\s*</p>`, 'g')
+            ];
+
+            for (const reg of patterns) {
+                result = result.replace(reg, '');
+            }
+        }
+        return result;
     }
 
     private buildCopyrightPage(detail: any, pkg: EpubPackage): string {
