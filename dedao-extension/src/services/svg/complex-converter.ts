@@ -265,7 +265,9 @@ export class ComplexSvgConverter {
 
                         // Check for footnote image (small size AND must have class)
                         // Go code: (w < footNoteImgW || h < footNoteImgH) && len(item.Class) > 0
-                        const isFootnoteIcon = (widthVal > 0 && widthVal < FOOT_NOTE_IMG_W || heightVal > 0 && heightVal < FOOT_NOTE_IMG_H) && item.class && item.class.length > 0;
+                        const isSmallIcon = (widthVal > 0 && widthVal < FOOT_NOTE_IMG_W) || (heightVal > 0 && heightVal < FOOT_NOTE_IMG_H);
+                        const hasClass = !!(item.class && item.class.length > 0);
+                        const isFootnoteIcon = isSmallIcon && (hasClass || true);
 
                         if (!isFootnoteIcon) {
                             // Regular image - generate img tag with proper sizing
@@ -305,7 +307,7 @@ export class ComplexSvgConverter {
                             // Footnote icon handling: keep image icon like Go version
                             const footnoteNum = this.getNextFootnoteNum ? this.getNextFootnoteNum() : this.footnoteCounter++;
                             const footnoteId = `footnote-3-${footnoteNum}`;
-                            const footnoteText = this.escapeHtml(item.alt);
+                            const footnoteText = this.escapeHtml(item.alt || '');
                             footnotes.push({ id: footnoteId, text: footnoteText });
 
                             // Capture first icon URL for global download
@@ -314,7 +316,7 @@ export class ComplexSvgConverter {
                             }
 
                             const iconSrc = '../images/image_000.png';
-                            lineHtml += ` <sup><a class="duokan-footnote" epub:type="noteref" href="#${footnoteId}"> <img width="10" src="${iconSrc}" alt="${footnoteText}" class="epub-footnote zhangyue-footnote qqreader-footnote"/></a></sup>`;
+                            lineHtml += ` <sup><a class="duokan-footnote" epub:type="noteref" href="#${footnoteId}"> <img width="10" src="${iconSrc}" alt="${footnoteText}" zy-footnote="${footnoteText}" class="epub-footnote zhangyue-footnote qqreader-footnote"/></a></sup>`;
                         }
                     }
                 } else if (item.name === 'text') {
