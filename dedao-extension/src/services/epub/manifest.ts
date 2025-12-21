@@ -7,20 +7,16 @@ export class ManifestGenerator {
         const ncxItem = pkg.manifest.find(item => item.mediaType === 'application/x-dtbncx+xml');
         const ncxId = ncxItem ? ncxItem.id : 'ncx';
 
-    const metadata = [
-      `<dc:identifier id="BookId">${escapeXml(pkg.metadata.identifier)}</dc:identifier>`,
-      `<dc:title>${escapeXml(pkg.metadata.title)}</dc:title>`,
-      `<dc:language>${escapeXml(pkg.metadata.language)}</dc:language>`,
-      `<dc:creator>${escapeXml(pkg.metadata.creator)}</dc:creator>`,
-      pkg.metadata.description ? `<dc:description>${escapeXml(pkg.metadata.description)}</dc:description>` : '',
-      `<meta property="dcterms:modified">${new Date().toISOString().replace(/\.\d+Z$/, 'Z')}</meta>`,
-      pkg.metadata.coverId ? `<meta name="cover" content="${pkg.metadata.coverId}" />` : ''
-    ].filter(Boolean).join('\n    ');
-
-    return `<?xml version="1.0" encoding="utf-8"?>
-<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="BookId" version="3.0">
+        return `<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="pub-id" version="3.0">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
-    ${metadata}
+    <dc:identifier id="pub-id">${escapeXml(pkg.metadata.identifier)}</dc:identifier>
+    <dc:title>${escapeXml(pkg.metadata.title)}</dc:title>
+    <dc:language>en</dc:language>
+    ${pkg.metadata.description ? `<dc:description>${escapeXml(pkg.metadata.description)}</dc:description>` : ''}
+    <dc:creator id="creator">${escapeXml(pkg.metadata.creator)}</dc:creator>
+    <meta refines="#creator" property="role" scheme="marc:relators" id="role">aut</meta>
+    ${pkg.metadata.coverId ? `<meta name="cover" content="${pkg.metadata.coverId}"></meta>` : ''}
   </metadata>
   <manifest>
     ${pkg.manifest.map(item => {
@@ -32,12 +28,12 @@ export class ManifestGenerator {
             href = 'xhtml/' + href;
         }
         const properties = item.properties ? ` properties="${escapeXml(item.properties)}"` : '';
-        return `<item id="${escapeXml(item.id)}" href="${escapeXml(href)}" media-type="${item.mediaType}"${properties}/>`;
+        return `<item id="${escapeXml(item.id)}" href="${escapeXml(href)}" media-type="${item.mediaType}"${properties}></item>`;
     }).join('\n    ')}
   </manifest>
   <spine toc="${ncxId}">
     ${pkg.spine.map(item =>
-        `<itemref idref="${escapeXml(item.idref)}"${item.linear === 'no' ? ' linear="no"' : ''}/>`
+        `<itemref idref="${escapeXml(item.idref)}"${item.linear === 'no' ? ' linear="no"' : ''}></itemref>`
     ).join('\n    ')}
   </spine>
 </package>`;

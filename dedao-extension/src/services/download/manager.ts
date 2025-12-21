@@ -7,23 +7,26 @@ import { EpubPackage, ManifestItem, SpineItem, EpubResource, NavPoint } from '..
 import { EbookMetadata, Chapter } from '../../types/ebook.ts';
 import { sanitizeId, escapeXml, calculateProgress, cssRelativePath, cssResourcePath, formatImageResourceFileName } from '../epub/utils.ts';
 import { logger } from '../../utils/logger.ts';
+import fs from 'fs';
+import path from 'path';
 
 export class DownloadManager {
     private converter: ComplexSvgConverter;
     private generator = new EpubGenerator();
-    private imageCounter = 0; // New counter for sequential image naming
-    private footnoteCounter = 0; // Counter for sequential footnote IDs
-    private tocIdCounter = 0; // Counter for sigil_toc_id_X attributes
-    private urlToIdMap = new Map<string, { id: string, href: string }>(); // Cache for image deduplication
-    private footnoteIconUrl: string | undefined; // Global footnote icon URL (reused across whole book)
-    private footnoteIconId: string | undefined; // ID of the footnote icon
-    private chapterIdMap = new Map<string, string>(); // Maps chapter.id to Chapter_X_Y format
-    private catalogMap = new Map<string, string>(); // Maps Chapter_X_Y to catalog title (TOC-driven)
-    private autoChapterCounter = 1; // fallback counter for missing chapter ids
+    private imageCounter = 0; 
+    private tocIdCounter = 0; 
+    private urlToIdMap = new Map<string, { id: string, href: string }>(); 
+    private footnoteIconUrl: string | undefined; 
+    private footnoteIconId: string | undefined; 
+    private chapterIdMap = new Map<string, string>(); 
+    private catalogMap = new Map<string, string>(); 
+    private autoChapterCounter = 1; 
+    private tocLevel = new Map<string, number>(); 
+
+    public pkgTitle: string = ''; // Store title for filename generation
 
     constructor() {
-        // Pass footnote counter getter to converter
-        this.converter = new ComplexSvgConverter(() => this.footnoteCounter++);
+        this.converter = new ComplexSvgConverter();
     }
 
     async startDownload(
@@ -32,15 +35,16 @@ export class DownloadManager {
         onProgress?: (info: ProgressInfo) => void
     ): Promise<Blob> {
         // Reset state for new download
-        this.imageCounter = 0;
-        this.footnoteCounter = 0;
+        this.imageCounter = 1; 
         this.tocIdCounter = 0;
         this.urlToIdMap.clear();
         this.chapterIdMap.clear();
         this.catalogMap.clear();
+        this.tocLevel.clear();
         this.footnoteIconUrl = undefined;
         this.footnoteIconId = undefined;
         this.autoChapterCounter = 1;
+        this.pkgTitle = '';
 
         const task: DownloadTask = {
             bookId,
@@ -62,10 +66,7 @@ export class DownloadManager {
 
         try {
             updateProgress('Fetching ebook detail...', 0, 100);
-            // Get metadata (title, author, description, cover) from detail endpoint
             const detail = await ebookApi.getEbookDetail(enid);
-
-            // Build catalog map from TOC (catalog_list) for title lookup
             this.buildCatalogMap((detail as any).catalog_list || []);
 
             updateProgress('Fetching token...', 2, 100);
@@ -73,16 +74,16 @@ export class DownloadManager {
 
             updateProgress('Fetching book info...', 5, 100);
             const bookInfo = await ebookApi.getBookInfo(token);
-
-            // Initialize chapter ID mapping (Chapter_X_Y format)
             this.initializeChapterIdMapping(bookInfo.chapters || []);
 
-            // Initialize EpubPackage with detailed metadata from both endpoints
+            // Initialize EpubPackage
+            this.pkgTitle = `${detail.id}_${detail.title || detail.operating_title || ''}_${detail.book_author || ''}`;
+            const pkgAuthor = detail.book_author || '';
             const pkg: EpubPackage = {
                 metadata: {
-                    title: detail.title || detail.operating_title || '',
-                    creator: detail.book_author || '',
-                    language: 'zh',
+                    title: this.pkgTitle,
+                    creator: pkgAuthor,
+                    language: 'en',
                     identifier: `urn:dedao:${detail.id || enid}`,
                     description: detail.book_intro || ''
                 },
@@ -92,111 +93,46 @@ export class DownloadManager {
                 toc: []
             };
 
-            // Add Cover
-            const coverUrl = detail.cover || bookInfo.coverUrl;  // cover from detail or bookInfo
+            // ... rest of the code ...
+            // Fix mediaType logic in image loop later
+
+            // 1. Prepare Cover
+            let coverHtml = '';
+            const coverUrl = detail.cover || bookInfo.coverUrl; 
             if (coverUrl) {
                 try {
-                    const normalizedCoverUrl = this.normalizeUrl(coverUrl);
-                    let coverInfo = this.urlToIdMap.get(normalizedCoverUrl);
-                    let coverBlob: Blob | null = null;
+                    const coverBlob = await this.downloadImage(coverUrl);
+                    if (coverBlob) {
+                        let coverImageExt = (coverBlob.type && coverBlob.type.split('/')[1]) || 'jpg';
+                        if (coverImageExt === 'svg+xml') coverImageExt = 'svg';
+                        if (coverImageExt === 'jpeg') coverImageExt = 'jpg';
 
-                    if (!coverInfo) {
-                        coverBlob = await this.downloadImage(coverUrl);
-                        if (coverBlob) {
-                            let coverImageExt = (coverBlob.type && coverBlob.type.split('/')[1]) || 'jpg';
-                            if (coverImageExt === 'svg+xml') coverImageExt = 'svg';
-                            if (coverImageExt === 'jpeg') coverImageExt = 'jpg';
-
-                            // Cover naming aligns with Go: images/cover.jpg
-                            const coverImageFilename = `cover.${coverImageExt}`;
-                            const coverImageId = coverImageFilename;
-
-                            // Content images start at 000
-                            this.imageCounter = 0; 
-                            
-                            coverInfo = { id: coverImageId, href: `images/${coverImageFilename}` };
-                            this.urlToIdMap.set(normalizedCoverUrl, coverInfo);
-
-                            pkg.resources.push({
-                                id: coverInfo.id,
-                                href: coverInfo.href,
-                                mediaType: coverBlob.type || 'image/jpeg',
-                                content: coverBlob
-                            });
-                            pkg.manifest.push({
-                                id: coverInfo.id,
-                                href: coverInfo.href,
-                                mediaType: coverBlob.type || 'image/jpeg',
-                                properties: 'cover-image'
-                            });
-                        }
-                    }
-
-                    if (coverInfo) {
-                        pkg.metadata.coverId = coverInfo.id;
-
-                        // Add cover.xhtml - matching Go version format for simplicity
-                        // Cover page should be simple and clean
-                        const coverImgPath = coverInfo.href.startsWith('images/')
-                            ? `../${coverInfo.href}`
-                            : coverInfo.href;
-                        const coverHtml = `<?xml version="1.0" encoding="UTF-8"?>
+                        const coverImageFilename = `cover.${coverImageExt}`;
+                        pkg.metadata.coverId = coverImageFilename;
+                        const coverImgPath = `../images/${coverImageFilename}`;
+                        coverHtml = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
   <head>
     <title>${escapeXml(pkg.metadata.title || 'Cover')}</title>
-    <link rel="stylesheet" type="text/css" href="${cssRelativePath()}"></link>
   </head>
   <body>
 <img src="${coverImgPath}" alt="Cover Image" />
   </body>
 </html>`;
-                        // Note: coverInfo.href is relative to EPUB root (images/...)
-                        // cover.xhtml is also at EPUB root, so no path adjustment needed
-                        
-                        pkg.resources.push({
-                            id: 'cover.xhtml',
-                            href: 'cover.xhtml',
-                            mediaType: 'application/xhtml+xml',
-                            content: coverHtml
-                        });
-                        pkg.manifest.push({
-                            id: 'cover.xhtml',
-                            href: 'cover.xhtml',
-                            mediaType: 'application/xhtml+xml'
-                        });
-                        // Add to spine start
-                        pkg.spine.unshift({ idref: 'cover.xhtml' });
                     }
                 } catch (e) {
-                    logger.warn('Failed to download cover', e);
+                    logger.warn('Failed to prepare cover', e);
                 }
             }
 
-            // Add Copyright page (align with Go layout, placed after cover)
+            // 2. Prepare Copyright page
             const copyrightHtml = this.buildCopyrightPage(detail, pkg);
-            pkg.resources.push({
-                id: 'Copyright.xhtml',
-                href: 'Copyright.xhtml',
-                mediaType: 'application/xhtml+xml',
-                content: copyrightHtml
-            });
-            pkg.manifest.push({
-                id: 'Copyright.xhtml',
-                href: 'Copyright.xhtml',
-                mediaType: 'application/xhtml+xml'
-            });
-            if (pkg.spine.length > 0) {
-                pkg.spine.splice(1, 0, { idref: 'Copyright.xhtml' });
-            } else {
-                pkg.spine.push({ idref: 'Copyright.xhtml' });
-            }
 
-            // Build TOC structure for EPUB (NavPoints)
+            // 3. Build TOC structure
             pkg.toc = this.buildNavPoints(bookInfo.toc || []);
 
-            // Add CSS with font definitions (external CSS to reduce file size)
-            // Minimal CSS from Reference to avoid style conflicts and file bloat
+            // 4. Add CSS
             const cssContent = `body {
   background-color: #FFFFFF;
   margin-bottom: 0px;
@@ -210,225 +146,173 @@ img {
   max-width: 100%;
 }
 `;
-            pkg.resources.push({ id: 'css', href: cssResourcePath(), mediaType: 'text/css', content: cssContent });
-            pkg.manifest.push({ id: 'css', href: cssResourcePath(), mediaType: 'text/css' });
+            pkg.resources.push({ id: 'cover.css', href: 'css/cover.css', mediaType: 'text/css', content: cssContent });
+            pkg.manifest.push({ id: 'cover.css', href: 'css/cover.css', mediaType: 'text/css' });
 
-            // Process Chapters
-            const chapters = bookInfo.chapters || [];
-            const totalChapters = chapters.length;
+            // 5. Parse footnote delimiters
+            const { fnA, fnB } = await this.parseBookFnDelimiters(bookInfo.chapters || [], token);
+            this.converter.setFnDelimiters(fnA, fnB);
+
+            // 6. Process Chapters into fragments
+            const chaptersToProcess = (bookInfo.chapters || []).filter(c => {
+                const id = this.buildChapterIdentifier(c);
+                return id !== 'cover.xhtml' && id !== 'Copyright.xhtml';
+            });
+            const totalChapters = chaptersToProcess.length;
+            const chapterFragments: { id: string, content: string, imageUrls: string[] }[] = [];
             
             for (let i = 0; i < totalChapters; i++) {
-                const chapter = chapters[i];
-                updateProgress(`Downloading chapter ${i + 1}/${totalChapters}: ${chapter.title}`, i, totalChapters);
+                const chapter = chaptersToProcess[i];
+                const chapterIdentifier = this.buildChapterIdentifier(chapter);
+                const title = this.resolveChapterTitle(chapterIdentifier, chapter.title);
+                updateProgress(`Downloading chapter ${i + 1}/${totalChapters}: ${title}`, i, totalChapters);
 
-                // Fetch pages
                 const pagesResponse = await this.fetchAllPages(chapter.id, token);
-                
-                // Determine header level (Go matches 'header' + level)
-                // Default to 0 for top-level sections.
-            const chapterIdentifier = this.buildChapterIdentifier(chapter);
-            let level: number;
-            if (chapter.level !== undefined) {
-                level = chapter.level;
-            } else {
-                // 章节层级缺失时，根据 ID 兜底：带 _0001 视为正文（header1），否则视为分卷标题（header0）
-                level = /_0001/i.test(chapterIdentifier) ? 1 : 0;
-            }
-            const headerClass = `header${level}`;
+                this.converter.setChapterIndex(i + 2); // cover=0, copyright=1, chapters start at 2
 
-            // Choose heading tag based on level: level 0 -> h1, level 1 -> h2, etc.
-            const headingTag = `h${Math.min(level + 1, 6)}`; // h1 to h6
-            const tocId = `sigil_toc_id_${++this.tocIdCounter}`;
-
-            const title = this.resolveChapterTitle(chapterIdentifier, chapter.title);
-            const titleChars = title ? title.split('').map(char => `<b>${escapeXml(char)}</b>`).join('') : '';
-
-            let chapterHtml = `<?xml version="1.0" encoding="UTF-8"?>
+                let chapterHtml = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
-<head>
+  <head>
     <title>${escapeXml(title)}</title>
-    <link rel="stylesheet" type="text/css" href="${cssRelativePath()}"/>
-</head>
-<body>
+  </head>
+  <body>
 
-<div id="${chapterIdentifier}"></div><div class="${headerClass}"><${headingTag}><span id="${tocId}" style="font-size:19px;font-weight: bold;color:rgb(0, 0, 0);font-family:'PingFang SC';display: block;text-align:center;">${titleChars}</span></${headingTag}></div>
-<div class="part">`;
+`;
 
-            // Collect all footnotes from all pages first
-            const allChapterFootnotes: { id: string, text: string }[] = [];
-                                
-            let pageContents = '';
-                                for (const page of pagesResponse) {
-                                                        const decryptedSvg = AESCrypto.decrypt(page.content); // page.content is encrypted string
-                                                        // Use new converter with chapterId, it now returns HTML with placeholders and footnotes
-                                                        const { html: convertedHtml, images: remoteImageUrls, footnotes: pageFootnotes, footnoteIconUrl: pageFootnoteIconUrl } = this.converter.convert(decryptedSvg, chapter.id);
+                const chapterImageUrls: string[] = [];
+                for (const page of pagesResponse) {
+                    let pageDivId = chapterIdentifier;
+                    if (/_0001/i.test(chapterIdentifier) && !pageDivId.endsWith('.xhtml')) {
+                        pageDivId += '.xhtml';
+                    }
+                    chapterHtml += `<div id="${pageDivId}">`;
 
-                                                        // Capture first footnote icon URL for global reuse
-                                                        if (pageFootnoteIconUrl && !this.footnoteIconUrl) {
-                                                            this.footnoteIconUrl = pageFootnoteIconUrl;
-                                                        }
+                    const decryptedSvg = AESCrypto.decrypt(page.content); 
+                    const { html: convertedHtml, images: pageImageUrls, footnoteIconUrl: pageFootnoteIconUrl } = this.converter.convert(decryptedSvg, chapter.id);
 
-                                                        // Collect footnotes
-                                                        if (pageFootnotes && pageFootnotes.length > 0) {
-                                                            allChapterFootnotes.push(...pageFootnotes);
-                                                        }
+                    if (pageFootnoteIconUrl && !this.footnoteIconUrl) {
+                        this.footnoteIconUrl = pageFootnoteIconUrl;
+                    }
 
-                                                        let processedChapterHtml = convertedHtml; // Work on a mutable copy of the HTML fragment
+                    chapterImageUrls.push(...pageImageUrls);
+                    chapterHtml += convertedHtml;
+                    chapterHtml += `</div>`;
+                }
 
-                                                        // Download and deduplicate images, then replace placeholders in the HTML fragment
-                                                        for (const imgUrl of remoteImageUrls) {
-                                                            try {
-                                                                const normalizedImgUrl = this.normalizeUrl(imgUrl);
-                                                                let imgInfo = this.urlToIdMap.get(normalizedImgUrl);
+                chapterHtml += `\n\n\n</body>\n</html>`;
+                chapterFragments.push({ id: chapterIdentifier, content: chapterHtml, imageUrls: chapterImageUrls });
+            }
 
-                                                                if (!imgInfo) {
-                                                                    // Check if it's a footnote icon
-                                                                    const isFootnoteIcon = this.footnoteIconUrl && normalizedImgUrl === this.normalizeUrl(this.footnoteIconUrl);
+            // 7. Global Image Processing and Placeholder replacement
+            const globalUrlToInfo = new Map<string, { id: string, href: string }>();
+            this.imageCounter = 1; // Start from 001 (000 is reserved for footnote icon)
 
-                                                                    if (isFootnoteIcon && this.footnoteIconId) {
-                                                                        // Footnote icon already downloaded, reuse its ID
-                                                                        imgInfo = { id: this.footnoteIconId, href: `images/${this.footnoteIconId}.png` };
-                                                                        this.urlToIdMap.set(normalizedImgUrl, imgInfo);
-                                                                    } else if (isFootnoteIcon) {
-                                                                        // First time seeing this footnote icon, download it once
-                                                                        const imgBlob = await this.downloadImage(imgUrl);
-                                                                        if (imgBlob) {
-                                                                            // Always use PNG format for footnote icons to avoid duplication (PNG vs JPEG)
-                                                                            const imgExt = 'png';
+            const allFragments = [
+                { id: 'cover.xhtml', content: coverHtml, imageUrls: coverUrl ? [coverUrl] : [] },
+                { id: 'Copyright.xhtml', content: copyrightHtml, imageUrls: [] },
+                ...chapterFragments
+            ];
 
-                                                                            // Use fixed index 0 for footnote icon (global reuse)
-                                                                            const imgId = 'image_000';
-                                                                            const imgFilename = `image_000.${imgExt}`;
+            for (const frag of allFragments) {
+                if (!frag.content) continue;
+                let updatedContent = frag.content;
+                const uniqueUrlsInFrag = frag.imageUrls; // Preserve order, no Set yet
 
-                                                                            this.footnoteIconId = imgId;
-                                                                            imgInfo = { id: imgId, href: `images/${imgFilename}` };
-                                                                            this.urlToIdMap.set(normalizedImgUrl, imgInfo);
+                for (const imgUrl of uniqueUrlsInFrag) {
+                    let imgInfo = globalUrlToInfo.get(imgUrl);
+                    
+                    const isFootnoteIcon = this.footnoteIconUrl && imgUrl === this.footnoteIconUrl;
+                    const isCover = coverUrl && imgUrl === coverUrl;
 
-                                                                            pkg.resources.push({
-                                                                                id: imgInfo.id,
-                                                                                href: imgInfo.href,
-                                                                                mediaType: imgBlob.type || 'image/png',
-                                                                                content: imgBlob
-                                                                            });
-                                                                            pkg.manifest.push({
-                                                                                id: imgInfo.id,
-                                                                                href: imgInfo.href,
-                                                                                mediaType: imgBlob.type || 'image/png'
-                                                                            });
+                    if (!imgInfo) {
+                        if (isFootnoteIcon) {
+                            imgInfo = { id: 'image_000.png', href: 'images/image_000.png' };
+                        } else if (isCover) {
+                            let ext = 'jpg';
+                            if (imgUrl.includes('.png')) ext = 'png';
+                            imgInfo = { id: 'cover.jpg', href: `images/cover.${ext}` };
+                        } else {
+                            const imgBlob = await this.downloadImage(imgUrl);
+                            if (imgBlob) {
+                                let imgExt = (imgBlob.type && imgBlob.type.split('/')[1]) || 'jpg';
+                                if (imgExt === 'svg+xml') imgExt = 'svg';
+                                if (imgExt === 'jpeg') imgExt = 'jpg';
 
-                                                                            // Increment counter to skip image_000 for other images
-                                                                            if (this.imageCounter === 0) this.imageCounter++;
-                                                                        }
-                                                                    } else if (coverUrl && normalizedImgUrl === this.normalizeUrl(coverUrl)) {
-                                                                        // Handle cover image
-                                                                        let ext = 'jpg';
-                                                                        if (imgUrl.includes('.png')) ext = 'png';
-                                                                        else if (imgUrl.includes('.jpeg') || imgUrl.includes('.jpg')) ext = 'jpg';
+                                const currentImageIndex = this.imageCounter++;
+                                const filename = formatImageResourceFileName(currentImageIndex, imgExt);
+                                imgInfo = { id: filename, href: `images/${filename}` };
 
-                                                                        const coverFilename = `cover.${ext}`;
-                                                                        imgInfo = { id: coverFilename, href: `images/${coverFilename}` };
-                                                                        this.urlToIdMap.set(normalizedImgUrl, imgInfo);
-                                                                    } else {
-                                                                        // Regular image, download it
-                                                                        const imgBlob = await this.downloadImage(imgUrl);
-                                                                        if (imgBlob) {
-                                                                            let imgExt = (imgBlob.type && imgBlob.type.split('/')[1]) || 'jpg';
-                                                                            if (imgExt === 'svg+xml') imgExt = 'svg';
-                                                                                if (imgExt === 'jpeg') imgExt = 'jpg';
+                                let mediaType = imgBlob.type || 'image/jpeg';
+                                if (imgExt === 'svg') mediaType = 'image/svg+xml';
 
-                                                                            // Skip index 0 if it's used for footnote icon
-                                                                            const currentImageIndex = this.imageCounter;
-                                                                            this.imageCounter++;
+                                pkg.resources.push({
+                                    id: imgInfo.id,
+                                    href: imgInfo.href,
+                                    mediaType: mediaType,
+                                    content: imgBlob
+                                });
+                                pkg.manifest.push({
+                                    id: imgInfo.id,
+                                    href: imgInfo.href,
+                                    mediaType: mediaType
+                                });
+                            }
+                        }
 
-                                                                            const imgFilename = formatImageResourceFileName(currentImageIndex, imgExt);
-                                                                            const imgId = imgFilename.replace(/\.[^.]+$/, '');
+                        if (imgInfo) {
+                            globalUrlToInfo.set(imgUrl, imgInfo);
+                            if ((isFootnoteIcon || isCover) && !pkg.resources.some(r => r.id === imgInfo!.id)) {
+                                const imgBlob = await this.downloadImage(imgUrl);
+                                if (imgBlob) {
+                                    let mediaType = imgBlob.type || (isFootnoteIcon ? 'image/png' : 'image/jpeg');
+                                    if (imgInfo.href.endsWith('.svg')) mediaType = 'image/svg+xml';
 
-                                                                            imgInfo = { id: imgId, href: `images/${imgFilename}` };
-                                                                            this.urlToIdMap.set(normalizedImgUrl, imgInfo);
+                                    pkg.resources.push({
+                                        id: imgInfo.id,
+                                        href: imgInfo.href,
+                                        mediaType: mediaType,
+                                        content: imgBlob
+                                    });
+                                    pkg.manifest.push({
+                                        id: imgInfo.id,
+                                        href: imgInfo.href,
+                                        mediaType: mediaType,
+                                        properties: isCover ? 'cover-image' : undefined
+                                    });
+                                }
+                            }
+                        }
+                    }
 
-                                                                            pkg.resources.push({
-                                                                                id: imgInfo.id,
-                                                                                href: imgInfo.href,
-                                                                                mediaType: imgBlob.type || 'image/jpeg',
-                                                                                content: imgBlob
-                                                                            });
-                                                                            pkg.manifest.push({
-                                                                                id: imgInfo.id,
-                                                                                href: imgInfo.href,
-                                                                                mediaType: imgBlob.type || 'image/jpeg'
-                                                                            });
-                                                                        }
-                                                                    }
-                                                                }
-                                    
-                                                                if (imgInfo) {
-                                                                    // Replace placeholder in the convertedHtml with local path
-                                                                    const placeholder = `__IMG_PLACEHOLDER_${encodeURIComponent(imgUrl)}__`;
-                                                                    // Images are at EPUB/images/, XHTML is at EPUB/xhtml/, so use ../images/...
-                                                                    const imagePath = imgInfo.href.startsWith('images/')
-                                                                        ? '../' + imgInfo.href
-                                                                        : imgInfo.href;
-                                                                    // Use RegExp to replace all occurrences of the placeholder
-                                                                    processedChapterHtml = processedChapterHtml.replace(new RegExp(this.escapeRegExp(placeholder), 'g'), imagePath);
-                                                                }
-                                                            } catch (e) {
-                                                                logger.warn(`Failed to process image ${imgUrl}: ${e}`, e);
-                                                            }
-                                                        }
-                                    
-                                                        pageContents += processedChapterHtml;
-                                                    }
+                    if (imgInfo) {
+                        const placeholder = `__IMG_PLACEHOLDER_${encodeURIComponent(imgUrl)}__`;
+                        const imagePath = `../${imgInfo.href}`; 
+                        updatedContent = updatedContent.replace(new RegExp(this.escapeRegExp(placeholder), 'g'), imagePath);
+                    }
+                }
 
-                                    // Remove重复标题（父级/当前）避免二次显示
-                                    const parentTitle = chapter.parentId ? this.catalogMap.get(this.chapterIdMap.get(chapter.parentId) || sanitizeId(chapter.parentId)) : undefined;
-                                    pageContents = this.removeDuplicateTitles(pageContents, [title, parentTitle].filter(Boolean) as string[]);
-
-                                    // Add all footnotes FIRST (at the start of div.part), then page contents
-                                    for (const fn of allChapterFootnotes) {
-                                        chapterHtml += `<aside epub:type="footnote" id="${fn.id}"><ol class="duokan-footnote-content" style="list-style:none;padding:0px;margin:0px;"><li class="duokan-footnote-item" id="${fn.id}">${fn.text}</li></ol></aside>`;
-                                    }
-
-                                    chapterHtml += pageContents;
-
-                                    chapterHtml += `</div>
-</body>
-</html>`;
-
-                const filename = chapterIdentifier;
-                const resourceId = chapterIdentifier;
-
+                // Add document to package
                 pkg.resources.push({
-                    id: resourceId,
-                    href: filename,
+                    id: frag.id,
+                    href: frag.id,
                     mediaType: 'application/xhtml+xml',
-                    content: chapterHtml
+                    content: updatedContent
                 });
 
                 pkg.manifest.push({
-                    id: resourceId,
-                    href: filename,
+                    id: frag.id,
+                    href: frag.id,
                     mediaType: 'application/xhtml+xml'
                 });
 
-                pkg.spine.push({ idref: resourceId });
+                pkg.spine.push({ idref: frag.id });
             }
 
-            // Ensure TOC NavPoints point to correct hrefs
             this.fixTocHrefs(pkg.toc);
 
-            // Add Navigation Docs to manifest (required by Generator?)
             pkg.manifest.push({ id: 'nav', href: 'nav.xhtml', mediaType: 'application/xhtml+xml', properties: 'nav' });
             pkg.manifest.push({ id: 'ncx', href: 'toc.ncx', mediaType: 'application/x-dtbncx+xml' });
-            // Add nav to spine after cover-page, if cover-page exists
-            // Or add it after any default items that are meant to be first.
-            // Go places nav (toc.ncx) after cover.xhtml and Copyright.xhtml, as the toc="ncx" in spine handles it.
-            // So we don't need to put 'nav' in the spine explicitly.
-            // Let's remove this: pkg.spine.unshift({ idref: 'nav', linear: 'no' });
-            // The Go version's package.opf does not have <itemref idref="nav" linear="no"/>
-            // It just has <spine toc="ncx"> and then references the actual chapters.
-            // The nav.xhtml is linked in the manifest and implicit from toc="ncx".
-            // So, remove nav from spine.
 
             updateProgress('Generating EPUB...', 100, 100);
             return await this.generator.generate(pkg);
@@ -456,7 +340,6 @@ img {
                      content: p.svg
                  })));
                  
-                 // Fallback if is_end is missing (rare)
                  const lastPage = response.pages[response.pages.length - 1];
                  if (response.is_end !== undefined) {
                      isEnd = response.is_end;
@@ -471,6 +354,31 @@ img {
         return allPages;
     }
 
+    private async parseBookFnDelimiters(chapters: Chapter[], token: string): Promise<{ fnA: string, fnB: string }> {
+        const delimiters = new Set<string>();
+        for (const chapter of chapters.slice(0, 5)) {
+            const pages = await this.fetchAllPages(chapter.id, token);
+            for (const page of pages) {
+                const decryptedSvg = AESCrypto.decrypt(page.content);
+                const doc = this.converter.parseSvg(decryptedSvg);
+                const aTags = doc.getElementsByTagName('a');
+                for (let i = 0; i < aTags.length; i++) {
+                    const text = aTags[i].textContent || "";
+                    if (text === '[' || text === ']') delimiters.add(text);
+                    if (delimiters.size >= 2) break;
+                }
+                if (delimiters.size >= 2) break;
+            }
+            if (delimiters.size >= 2) break;
+        }
+        
+        const keys = Array.from(delimiters);
+        return {
+            fnA: keys[0] || "",
+            fnB: keys[1] || ""
+        };
+    }
+
     private async downloadImage(url: string): Promise<Blob | null> {
         try {
             const response = await fetch(url);
@@ -482,21 +390,18 @@ img {
     }
 
     private buildNavPoints(tocItems: any[]): NavPoint[] {
-        // Recursively build NavPoints
         return tocItems.map((item, index) => ({
             id: `nav_${index}_${sanitizeId(item.href || item.text)}`,
             playOrder: item.playOrder || index,
             label: item.text,
-            contentSrc: '', // Placeholder, fixed later
+            contentSrc: '', 
             children: item.children ? this.buildNavPoints(item.children) : [],
-            // Keep original href to map later
             originalHref: item.href 
         } as any)); 
     }
 
     private fixTocHrefs(navPoints: NavPoint[]) {
         for (const np of navPoints) {
-            // Assuming originalHref is chapterId
             const originalHref = (np as any).originalHref;
             if (originalHref) {
                 const baseHref = originalHref.split('#')[0];
@@ -509,13 +414,9 @@ img {
     }
 
     private escapeRegExp(string: string): string {
-        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
+        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); 
     }
 
-    /**
-     * Initialize chapter ID mapping to generate Chapter_X_Y identifiers
-     * Builds a hierarchy-based numbering system matching the Go reference format
-     */
     private initializeChapterIdMapping(chapters: Chapter[]): void {
         this.chapterIdMap.clear();
         this.autoChapterCounter = 1;
@@ -530,16 +431,15 @@ img {
         });
     }
 
-    /**
-     * Build catalog map from TOC for title lookup
-     * Extracts chapter IDs from catalog hrefs and maps them to their titles
-     */
     private buildCatalogMap(catalogList: any[]): void {
         for (const item of catalogList) {
+            if (item.text) {
+                const level = item.level || 0;
+                this.tocLevel.set(item.text, level);
+            }
             if (item.href && item.text) {
-                // Extract chapter ID from href (e.g. "Chapter_1_1_0001.xhtml#..." -> "Chapter_1_1_0001")
-                const hrefPart = item.href.split('#')[0]; // Remove anchor
-                const chapterId = hrefPart.replace(/\.xhtml?$/i, ''); // Remove .xhtml or .xml extension
+                const hrefPart = item.href.split('#')[0]; 
+                const chapterId = hrefPart.replace(/\.xhtml?$/i, ''); 
                 const candidates = [
                     chapterId,
                     hrefPart,
@@ -549,11 +449,9 @@ img {
                 candidates.forEach(key => this.catalogMap.set(key, item.text));
             }
         }
+        this.converter.setTocLevel(this.tocLevel);
     }
 
-    /**
-     * Get the chapter identifier in Chapter_X_Y format
-     */
     private buildChapterIdentifier(chapter: Chapter): string {
         if (chapter.id && this.chapterIdMap.has(chapter.id)) {
             return this.chapterIdMap.get(chapter.id)!;
@@ -581,36 +479,24 @@ img {
         return rawTitle?.trim() || chapterIdentifier;
     }
 
-    /**
-     * 去重内容中的标题行，防止SVG正文里再出现一次目录标题/章节标题
-     */
-    private removeDuplicateTitles(content: string, titles: string[]): string {
-        let result = content;
-        for (const t of titles) {
-            const escaped = t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const boldChars = t.split('').map(ch => `<b>${ch}</b>`).join('\\s*');
-
-            const patterns = [
-                new RegExp(`<p[^>]*>\\s*<span[^>]*>\\s*${escaped}\\s*</span>\\s*</p>`, 'g'),
-                new RegExp(`<p[^>]*>\\s*<span[^>]*>\\s*${boldChars}\\s*</span>\\s*</p>`, 'g')
-            ];
-
-            for (const reg of patterns) {
-                result = result.replace(reg, '');
-            }
-        }
-        return result;
-    }
-
     private buildCopyrightPage(detail: any, pkg: EpubPackage): string {
         const bookName = escapeXml(detail?.title || detail?.operating_title || pkg.metadata.title || '');
         const author = escapeXml(detail?.book_author || pkg.metadata.creator || '');
-        const press = escapeXml(detail?.press || detail?.publisher || detail?.pressName || '');
+        const pressRaw = detail?.press || detail?.publisher || detail?.pressName || '';
+        const press = escapeXml(typeof pressRaw === 'object' ? (pressRaw.name || JSON.stringify(pressRaw)) : String(pressRaw));
         const publication = escapeXml(detail?.publish_time || detail?.publication_date || detail?.publishDate || detail?.publish || '');
         const isbn = escapeXml(detail?.isbn || detail?.book_isbn || '');
-        const wordCountRaw = detail?.word || detail?.word_count || '';
-        const wordCount = wordCountRaw ? escapeXml(`${wordCountRaw}${typeof wordCountRaw === 'number' ? '字' : ''}`) : '';
-        const comment = escapeXml(detail?.copyright || detail?.copyright_info || detail?.comment || '');
+        const wordCountRaw = detail?.word || detail?.word_count || detail?.count || '';
+        let wordCount = '';
+        if (wordCountRaw) {
+            if (typeof wordCountRaw === 'number') {
+                wordCount = wordCountRaw > 1000 ? `${Math.floor(wordCountRaw / 1000)}千字` : `${wordCountRaw}字`;
+            } else {
+                wordCount = String(wordCountRaw);
+            }
+        }
+        wordCount = escapeXml(wordCount);
+        const comment = escapeXml(detail?.copyright || detail?.copyright_info || detail?.comment || '本书由得到授权制作电子版发行');
         const comment2 = escapeXml(detail?.comment2 || detail?.copyright2 || '版权所有·侵权必究');
 
         return `<?xml version="1.0" encoding="UTF-8"?>
@@ -622,17 +508,17 @@ img {
   <body>
 
 <div id="Copyright.xhtml">
-</div><div class="header0"><h1><span id="magic_copyright_title" style="font-size:22px;font-weight: bold;color:rgb(0, 0, 0);font-family:'PingFang SC';display: block;text-align:center;"><b>版</b><b>权</b><b>信</b><b>息</b></span></h1></div>
+</div><div class="header0"><h1><span id="magic_copyright_title" style="font-size:22px;font-weight: bold;color:rgb(0, 0, 0);font-family:&#39;PingFang SC&#39;;display: block;text-align:center;"><b>版</b><b>权</b><b>信</b><b>息</b></span></h1></div>
 <div class="part">
-    <p><span id="magic_copyright_entitle" style="font-size:9px;font-weight: bold;color:rgb(120, 120, 120);font-family:'PingFang SC';display: block;text-align:center;"><b>C</b><b>O</b><b>P</b><b>Y</b><b>R</b><b>I</b><b>G</b><b>H</b><b>T</b></span></p>
-    <p><span id="bookname" style="font-size:16px;font-family:'PingFang SC';">书名：${bookName}</span></p>
-    <p><span id="author" style="font-size:16px;font-family:'PingFang SC';">作者：${author}</span></p>
-    <p><span id="press" style="font-size:16px;font-family:'PingFang SC';">出版社：${press}</span></p>
-    <p><span id="publicationdate" style="font-size:16px;font-family:'PingFang SC';">出版时间：${publication}</span></p>
-    <p><span id="isbn" style="font-size:16px;font-family:'PingFang SC';">ISBN：${isbn}</span></p>
-    <p><span id="word" style="font-size:16px;font-family:'PingFang SC';">字数：${wordCount}</span></p>
-    <p><span id="comment" style="font-size:16px;font-family:'PingFang SC';">${comment || '本书由得到授权制作电子版发行'}</span></p>
-    <p><span id="comment2" style="font-size:16px;font-family:'PingFang SC';">${comment2}</span></p></div>
+	<p><span id="magic_copyright_entitle" style="font-size:9px;font-weight: bold;color:rgb(120, 120, 120);font-family:&#39;PingFang SC&#39;;display: block;text-align:center;"><b>C</b><b>O</b><b>P</b><b>Y</b><b>R</b><b>I</b><b>G</b><b>H</b><b>T</b></span></p>
+	<p><span id="bookname" style="font-size:16px;font-family:&#39;PingFang SC&#39;;">书名：${bookName}</span></p>
+	<p><span id="author" style="font-size:16px;font-family:&#39;PingFang SC&#39;;">作者：${author}</span></p>
+	<p><span id="press" style="font-size:16px;font-family:&#39;PingFang SC&#39;;">出版社：${press}</span></p>
+	<p><span id="publicationdate" style="font-size:16px;font-family:&#39;PingFang SC&#39;;">出版时间：${publication}</span></p>
+	<p><span id="isbn" style="font-size:16px;font-family:&#39;PingFang SC&#39;;">ISBN：${isbn}</span></p>
+	<p><span id="word" style="font-size:16px;font-family:&#39;PingFang SC&#39;;">字数：${wordCount}</span></p>
+	<p><span id="comment" style="font-size:16px;font-family:&#39;PingFang SC&#39;;">${comment}</span></p>
+	<p><span id="comment2" style="font-size:16px;font-family:&#39;PingFang SC&#39;;">${comment2}</span></p></div>
 
 
 </body>
@@ -641,8 +527,6 @@ img {
 
     private normalizeUrl(url: string): string {
         try {
-            // Remove query parameters to deduplicate images (e.g. tokens)
-            // dedao image urls: https://.../image.png?token=...
             const u = new URL(url);
             return `${u.origin}${u.pathname}`;
         } catch (e) {

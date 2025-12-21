@@ -2,19 +2,20 @@ import { NavPoint } from '../../types/epub.ts';
 import { escapeXml } from './utils.ts';
 
 export class NavGenerator {
-    generateNav(toc: NavPoint[]): string {
-        return `<?xml version="1.0" encoding="utf-8"?>
+    generateNav(toc: NavPoint[], title: string): string {
+        return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
 <head>
-    <title>Table of Contents</title>
+  <title>${escapeXml(title)}</title>
 </head>
 <body>
-    <nav epub:type="toc" id="toc">
-        <h1>Table of Contents</h1>
-        <ol>
-            ${this.renderNavItems(toc)}
-        </ol>
-    </nav>
+  <nav epub:type="toc">
+    <h1>Table of Contents</h1>
+    <ol>
+      ${this.renderNavItems(toc).trim()}
+    </ol>
+  </nav>
 </body>
 </html>`;
     }
@@ -23,11 +24,10 @@ export class NavGenerator {
         return items.map(item => {
             const normalizedHref = this.normalizeHref(item.contentSrc);
             return `
-            <li>
-                <a href="${normalizedHref}">${escapeXml(item.label)}</a>
-                ${item.children && item.children.length > 0 ? `<ol>${this.renderNavItems(item.children)}</ol>` : ''}
-            </li>
-        `;
+      <li>
+        <a href="${normalizedHref}">${escapeXml(item.label)}</a>
+        ${item.children && item.children.length > 0 ? `<ol>${this.renderNavItems(item.children)}</ol>` : ''}
+      </li>`;
         }).join('');
     }
 
@@ -61,18 +61,18 @@ export class NavGenerator {
 
         return `<?xml version="1.0" encoding="UTF-8"?>
 <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
-    <head>
-        <meta name="dtb:uid" content="${escapeXml(identifier)}"/>
-        <meta name="dtb:depth" content="3"/>
-        <meta name="dtb:totalPageCount" content="0"/>
-        <meta name="dtb:maxPageNumber" content="0"/>
-    </head>
-    <docTitle>
-        <text>${escapeXml(title)}</text>
-    </docTitle>
-    <navMap>
-        ${navMapContent.points}
-    </navMap>
+  <head>
+    <meta name="dtb:uid" content="${escapeXml(identifier)}"/>
+    <meta name="dtb:depth" content="3"/>
+    <meta name="dtb:totalPageCount" content="0"/>
+    <meta name="dtb:maxPageNumber" content="0"/>
+  </head>
+  <docTitle>
+    <text>${escapeXml(title)}</text>
+  </docTitle>
+  <navMap>
+    ${navMapContent.points.trim()}
+  </navMap>
 </ncx>`;
     }
 
@@ -88,12 +88,11 @@ export class NavGenerator {
             const normalizedHref = this.normalizeHref(item.contentSrc);
 
             html += `
-        <navPoint id="${escapeXml(item.id)}" playOrder="${playOrder}">
-            <navLabel>
-                <text>${escapeXml(item.label)}</text>
-            </navLabel>
-            <content src="${normalizedHref}"/>
-`;
+    <navPoint id="${escapeXml(item.id)}" playOrder="${playOrder}">
+      <navLabel>
+        <text>${escapeXml(item.label)}</text>
+      </navLabel>
+      <content src="${normalizedHref}"/>`;
 
             if (item.children && item.children.length > 0) {
                 const childResult = this.renderNcxPoints(item.children, playOrder + 1);
@@ -101,7 +100,8 @@ export class NavGenerator {
                 playOrder = childResult.nextPlayOrder;
             }
 
-            html += `        </navPoint>\n`;
+            html += `
+    </navPoint>`;
             playOrder++;
         }
 
