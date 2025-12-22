@@ -84,7 +84,7 @@ export class DownloadManager {
                     title: this.pkgTitle,
                     creator: pkgAuthor,
                     language: 'en',
-                    identifier: `urn:dedao:${detail.id || enid}`,
+                    identifier: `urn:uuid:${detail.id || enid}`, // Align with Go uuid format
                     description: detail.book_intro || ''
                 },
                 manifest: [],
@@ -115,6 +115,7 @@ export class DownloadManager {
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
   <head>
     <title>${escapeXml(pkg.metadata.title || 'Cover')}</title>
+    <link rel="stylesheet" type="text/css" href="../css/cover.css"></link>
   </head>
   <body>
 <img src="${coverImgPath}" alt="Cover Image" />
@@ -181,23 +182,24 @@ img {
 `;
 
                 const chapterImageUrls: string[] = [];
-                for (const page of pagesResponse) {
-                    let pageDivId = chapterIdentifier;
-                    if (/_0001/i.test(chapterIdentifier) && !pageDivId.endsWith('.xhtml')) {
-                        pageDivId += '.xhtml';
+                
+                // Check if this is a "container" chapter (like "内篇") that should have a header but no page content
+                const isContainerChapter = this.tocLevel.has(title) && this.tocLevel.get(title) === 0 && pagesResponse.length === 0;
+
+                if (isContainerChapter) {
+                    chapterHtml += `\n<div id="${chapterIdentifier}">\n</div><div class="header0"><h1><span id="sigil_toc_id_${this.tocIdCounter++}" style="font-size:22px;font-weight: bold;color:rgb(0, 0, 0);font-family:&#39;PingFang SC&#39;;display: block;text-align:center;"><b>${escapeXml(title.split('').join('<b></b>'))}</b></span></h1></div>\n<div class="part"></div>`;
+                } else {
+                    for (const page of pagesResponse) {
+                        const decryptedSvg = AESCrypto.decrypt(page.content); 
+                        const { html: convertedHtml, images: pageImageUrls, footnoteIconUrl: pageFootnoteIconUrl } = this.converter.convert(decryptedSvg, chapterIdentifier);
+
+                        if (pageFootnoteIconUrl && !this.footnoteIconUrl) {
+                            this.footnoteIconUrl = pageFootnoteIconUrl;
+                        }
+
+                        chapterImageUrls.push(...pageImageUrls);
+                        chapterHtml += convertedHtml;
                     }
-                    chapterHtml += `<div id="${pageDivId}">`;
-
-                    const decryptedSvg = AESCrypto.decrypt(page.content); 
-                    const { html: convertedHtml, images: pageImageUrls, footnoteIconUrl: pageFootnoteIconUrl } = this.converter.convert(decryptedSvg, chapter.id);
-
-                    if (pageFootnoteIconUrl && !this.footnoteIconUrl) {
-                        this.footnoteIconUrl = pageFootnoteIconUrl;
-                    }
-
-                    chapterImageUrls.push(...pageImageUrls);
-                    chapterHtml += convertedHtml;
-                    chapterHtml += `</div>`;
                 }
 
                 chapterHtml += `\n\n\n</body>\n</html>`;
@@ -206,7 +208,7 @@ img {
 
             // 7. Global Image Processing and Placeholder replacement
             const globalUrlToInfo = new Map<string, { id: string, href: string }>();
-            this.imageCounter = 1; // Start from 001 (000 is reserved for footnote icon)
+            this.imageCounter = 0; // Start from 000 to match Go version index
 
             const allFragments = [
                 { id: 'cover.xhtml', content: coverHtml, imageUrls: coverUrl ? [coverUrl] : [] },
@@ -218,16 +220,22 @@ img {
                 if (!frag.content) continue;
                 let updatedContent = frag.content;
                 const uniqueUrlsInFrag = frag.imageUrls; // Preserve order, no Set yet
+                
+                // Chapter-scoped deduplication to match Go version
+                const chapterUrlToInfo = new Map<string, { id: string, href: string }>();
 
                 for (const imgUrl of uniqueUrlsInFrag) {
-                    let imgInfo = globalUrlToInfo.get(imgUrl);
+                    let imgInfo = chapterUrlToInfo.get(imgUrl);
                     
                     const isFootnoteIcon = this.footnoteIconUrl && imgUrl === this.footnoteIconUrl;
                     const isCover = coverUrl && imgUrl === coverUrl;
 
                     if (!imgInfo) {
                         if (isFootnoteIcon) {
-                            imgInfo = { id: 'image_000.png', href: 'images/image_000.png' };
+                            // Go uses sequential numbering even for footnote icons if they repeat
+                            const currentImageIndex = this.imageCounter++;
+                            const filename = `image_${currentImageIndex.toString().padStart(3, '0')}.png`;
+                            imgInfo = { id: filename, href: `images/${filename}` };
                         } else if (isCover) {
                             let ext = 'jpg';
                             if (imgUrl.includes('.png')) ext = 'png';
@@ -261,7 +269,8 @@ img {
                         }
 
                         if (imgInfo) {
-                            globalUrlToInfo.set(imgUrl, imgInfo);
+                            chapterUrlToInfo.set(imgUrl, imgInfo);
+                            // Add shared resources to package
                             if ((isFootnoteIcon || isCover) && !pkg.resources.some(r => r.id === imgInfo!.id)) {
                                 const imgBlob = await this.downloadImage(imgUrl);
                                 if (imgBlob) {
@@ -389,10 +398,12 @@ img {
         }
     }
 
+    private globalNavCounter: number = 1;
+
     private buildNavPoints(tocItems: any[]): NavPoint[] {
-        return tocItems.map((item, index) => ({
-            id: `nav_${index}_${sanitizeId(item.href || item.text)}`,
-            playOrder: item.playOrder || index,
+        return tocItems.map((item) => ({
+            id: `navPoint-${this.globalNavCounter++}`,
+            playOrder: 0, // Will be set by nav.ts
             label: item.text,
             contentSrc: '', 
             children: item.children ? this.buildNavPoints(item.children) : [],
