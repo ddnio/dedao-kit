@@ -7,8 +7,6 @@ import { EpubPackage, ManifestItem, SpineItem, EpubResource, NavPoint } from '..
 import { EbookMetadata, Chapter } from '../../types/ebook.ts';
 import { sanitizeId, escapeXml, calculateProgress, cssRelativePath, cssResourcePath, formatImageResourceFileName } from '../epub/utils.ts';
 import { logger } from '../../utils/logger.ts';
-import fs from 'fs';
-import path from 'path';
 
 export class DownloadManager {
     private converter: ComplexSvgConverter;
