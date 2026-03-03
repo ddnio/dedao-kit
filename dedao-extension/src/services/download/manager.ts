@@ -16,10 +16,11 @@ export class DownloadManager {
     private urlToIdMap = new Map<string, { id: string, href: string }>(); 
     private footnoteIconUrl: string | undefined; 
     private footnoteIconId: string | undefined; 
-    private chapterIdMap = new Map<string, string>(); 
-    private catalogMap = new Map<string, string>(); 
-    private autoChapterCounter = 1; 
-    private tocLevel = new Map<string, number>(); 
+    private chapterIdMap = new Map<string, string>();
+    private catalogMap = new Map<string, string>();
+    private autoChapterCounter = 1;
+    private tocLevel = new Map<string, number>();
+    private prefetchedChapterPages = new Map<string, any[]>(); // Cache for pages prefetched by parseBookFnDelimiters
 
     public pkgTitle: string = ''; // Store title for filename generation
 
@@ -43,6 +44,7 @@ export class DownloadManager {
         this.footnoteIconId = undefined;
         this.autoChapterCounter = 1;
         this.pkgTitle = '';
+        this.prefetchedChapterPages.clear();
 
         const task: DownloadTask = {
             bookId,
@@ -166,7 +168,11 @@ img {
                 const title = this.resolveChapterTitle(chapterIdentifier, chapter.title);
                 updateProgress(`Downloading chapter ${i + 1}/${totalChapters}: ${title}`, i, totalChapters);
 
-                const pagesResponse = await this.fetchAllPages(chapter.id, token);
+                const prefetchedPages = this.prefetchedChapterPages.get(chapter.id);
+                const pagesResponse = prefetchedPages ?? await this.fetchAllPages(chapter.id, token);
+                if (prefetchedPages !== undefined) {
+                    this.prefetchedChapterPages.delete(chapter.id); // Free memory after use
+                }
                 this.converter.setChapterIndex(i + 2); // cover=0, copyright=1, chapters start at 2
 
                 let chapterHtml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -365,6 +371,9 @@ img {
         const delimiters = new Set<string>();
         for (const chapter of chapters.slice(0, 5)) {
             const pages = await this.fetchAllPages(chapter.id, token);
+            if (!this.prefetchedChapterPages.has(chapter.id)) {
+                this.prefetchedChapterPages.set(chapter.id, pages); // Cache for reuse in chapter processing
+            }
             for (const page of pages) {
                 const decryptedSvg = AESCrypto.decrypt(page.content);
                 const doc = this.converter.parseSvg(decryptedSvg);

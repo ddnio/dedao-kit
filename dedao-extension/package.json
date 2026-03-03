@@ -8,6 +8,8 @@
   },
   "scripts": {
     "test": "jest",
+    "test:epub": "jest tests/functional/epub-generation.test.ts --no-coverage",
+    "compare": "ts-node scripts/compare-epub.ts ../specs/002-align-epub-format/fixtures/reference.epub",
     "build": "tsc && vite build"
   },
   "repository": {

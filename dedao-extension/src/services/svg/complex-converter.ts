@@ -237,6 +237,10 @@ export class ComplexSvgConverter {
         let result = `\n<div id="${chapterId}">\n`;
         const images: string[] = [];
         let footnoteIconUrl: string | undefined;
+        // Track whether a div.part has been opened so footnote <aside> elements
+        // are always placed inside a part container (T009 fix).
+        let partOpened = false;
+        let pendingFootnotes = '';
 
         const keys = Array.from(lineContent.keys()).sort((a, b) => a - b);
 
@@ -245,6 +249,13 @@ export class ComplexSvgConverter {
             let cont = '', id = '', contWOTag = '';
             let lineStyle = '';
             let firstX = 0;
+            // Collect <aside> footnotes produced during this line's processing.
+            // They will be flushed into result only after we know whether a part
+            // is open, so they always land inside div.part.
+            let lineFootnotes = '';
+            // 跟踪当前正在开放的 fn 分组 span 的 style。
+            // 当连续 fn 项共享相同 style 时，合并进同一个 <span>；style 变化或遇到非文本项时关闭。
+            let fnSpanStyle = '';
 
             if (lineItems[0].id) {
                 id = lineItems[0].id;
@@ -274,6 +285,11 @@ export class ComplexSvgConverter {
                 const w = parseFloat(item.width || "0");
 
                 if (item.name === 'image') {
+                    // 图片 item 不属于 fn 分组，关闭任何正在开放的 fn span
+                    if (fnSpanStyle) {
+                        cont += '</span>';
+                        fnSpanStyle = '';
+                    }
                     if (firstX >= centerL && firstX <= centerH) {
                         style += "display: block;text-align:center;";
                     } else if (firstX >= rightL) {
@@ -291,7 +307,9 @@ export class ComplexSvgConverter {
                             const footnoteId = `footnote-${this.chapterIndex}-${i}`;
                             const footnoteContentId = `${footnoteId}-content`;
                             imgTag = `<sup><a class="duokan-footnote" epub:type="noteref" href="#${footnoteId}"> <img width="${Math.round(w)}" src="${placeholder}" alt="${this.escapeAttr(item.alt)}" zy-footnote="${this.escapeAttr(item.alt)}" class="${item.class} zhangyue-footnote qqreader-footnote"/></a></sup>`;
-                            result += `<aside epub:type="footnote" id="${footnoteId}"><ol class="duokan-footnote-content" style="list-style:none;padding:0px;margin:0px;"><li class="duokan-footnote-item" id="${footnoteContentId}">${this.escapeHtml(item.alt)}</li></ol></aside>`;
+                            // Accumulate into lineFootnotes instead of result so we can
+                            // guarantee placement inside div.part after the heading opens it.
+                            lineFootnotes += `<aside epub:type="footnote" id="${footnoteId}"><ol class="duokan-footnote-content" style="list-style:none;padding:0px;margin:0px;"><li class="duokan-footnote-item" id="${footnoteContentId}">${this.escapeHtml(item.alt)}</li></ol></aside>`;
                             cont += imgTag;
                             if (!footnoteIconUrl) footnoteIconUrl = item.href;
                         } else {
@@ -307,6 +325,17 @@ export class ComplexSvgConverter {
                     images.push(item.href);
                 } else if (item.name === 'text') {
                     const escapedContent = this.escapeHtml(item.content);
+
+                    // fn 项（如 [1]）可能有独立样式（蓝色），与行整体 lineStyle 不同。
+                    // 通过跟踪 fnSpanStyle 将连续同色 fn 项合并进同一个 <span>，
+                    // 与 Go 版本行为一致（一组脚注引用共享一个外层 span）。
+                    const itemFnSpanStyle =
+                        item.fn.href && item.style && item.style !== lineStyle ? item.style : '';
+                    if (fnSpanStyle !== itemFnSpanStyle) {
+                        if (fnSpanStyle) cont += '</span>';
+                        if (itemFnSpanStyle) cont += `<span style="${this.escapeAttr(itemFnSpanStyle)}">`;
+                        fnSpanStyle = itemFnSpanStyle;
+                    }
 
                     const tags = [
                         { condition: item.isBold, open: '<b>', close: '</b>' },
@@ -341,6 +370,12 @@ export class ComplexSvgConverter {
                 }
 
                 if (i === lineItems.length - 1) {
+                    // 行末：关闭任何尚未关闭的 fn 分组 span
+                    if (fnSpanStyle) {
+                        cont += '</span>';
+                        fnSpanStyle = '';
+                    }
+
                     let matchH = false;
                     const unescapedContWOTag = this.unescapeHtml(contWOTag);
 
@@ -359,17 +394,29 @@ export class ComplexSvgConverter {
                             result += '\n</div>';
                             result += `<div class="header${level}">${this.genTocLevelHtml(level, true)}`;
                         } else {
+                            // 在 <p> 之前先 flush 当前行的 footnote asides，
+                            // 与 Go 版本行为一致（aside 出现在引用它的段落之前）
+                            if (partOpened && lineFootnotes) {
+                                result += lineFootnotes;
+                                lineFootnotes = '';
+                            }
                             result += '\n\t<p>';
                         }
                     }
 
+                    // 对居中 heading，追加 display+text-align 以匹配 Go 版本输出
+                    let effectiveLineStyle = lineStyle;
+                    if (matchH && firstX >= centerL && firstX <= centerH) {
+                        effectiveLineStyle += 'display: block;text-align:center;';
+                    }
+
                     if (cont) {
-                        if (id && lineStyle) {
-                            result += `<span id="${id}" style="${this.escapeAttr(lineStyle)}">${cont}</span>`;
+                        if (id && effectiveLineStyle) {
+                            result += `<span id="${id}" style="${this.escapeAttr(effectiveLineStyle)}">${cont}</span>`;
                         } else if (id) {
                             result += `<span id="${id}">${cont}</span>`;
-                        } else if (lineStyle) {
-                            result += `<span style="${this.escapeAttr(lineStyle)}">${cont}</span>`;
+                        } else if (effectiveLineStyle) {
+                            result += `<span style="${this.escapeAttr(effectiveLineStyle)}">${cont}</span>`;
                         } else {
                             result += cont;
                         }
@@ -378,12 +425,37 @@ export class ComplexSvgConverter {
                     if (contWOTag) {
                         if (matchH) {
                             result += `${this.genTocLevelHtml(level, false)}</div>\n<div class="part">`;
+                            // A new div.part just opened; flush any footnotes that
+                            // accumulated before the first heading was seen.
+                            partOpened = true;
+                            if (pendingFootnotes) {
+                                result += pendingFootnotes;
+                                pendingFootnotes = '';
+                            }
                         } else {
                             result += '</p>';
                         }
                     }
+
+                    // Route footnotes produced by this line to the correct place.
+                    // If a part is already open they can go directly into result;
+                    // otherwise buffer them until the next part opens.
+                    if (lineFootnotes) {
+                        if (partOpened) {
+                            result += lineFootnotes;
+                        } else {
+                            pendingFootnotes += lineFootnotes;
+                        }
+                    }
                 }
             }
+        }
+
+        // If the page contains no headings (no div.part was ever opened) but
+        // there are still buffered footnotes, write them out as a fallback so
+        // they are not silently dropped.
+        if (pendingFootnotes) {
+            result += pendingFootnotes;
         }
 
         result += '</div>\n';

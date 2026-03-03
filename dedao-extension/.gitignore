@@ -22,5 +22,9 @@ coverage/
 # EPUB outputs (generated)
 dedao_*.epub
 
+# Env / credentials
+.env
+.env.*
+
 # Misc
 *.log

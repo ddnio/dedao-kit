@@ -73,8 +73,8 @@ describe('Download Integration Test', () => {
         expect(ebookApi.getEbookDetail).toHaveBeenCalledWith('enid123');
         expect(ebookApi.getBookInfo).toHaveBeenCalledWith('test_token');
         
-        // Should fetch pages for both chapters
-        expect(ebookApi.getChapterPages).toHaveBeenCalledTimes(2); 
+        // parseBookFnDelimiters prefetches pages (2 calls), actual chapter processing reuses cache (0 extra calls)
+        expect(ebookApi.getChapterPages).toHaveBeenCalledTimes(2);
 
         // Verify progress updates
         expect(onProgress).toHaveBeenCalled();
