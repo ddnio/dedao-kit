@@ -2,6 +2,7 @@ import JSZip from 'jszip';
 import { EpubPackage } from '../../types/epub.ts';
 import { ManifestGenerator } from './manifest.ts';
 import { NavGenerator } from './nav.ts';
+import { logger } from '../../utils/logger.ts';
 
 export class EpubGenerator {
     async generate(pkg: EpubPackage): Promise<Blob> {
@@ -30,15 +31,24 @@ export class EpubGenerator {
             }
 
             // Categorize resources into subdirectories
-            if (res.href.startsWith('images/')) {
+            if (res.mediaType === 'application/xhtml+xml') {
+                if (res.href === 'nav.xhtml') {
+                    // These go to EPUB root
+                    epub.file(res.href, content);
+                } else {
+                    const xhtmlFolder = epub.folder('xhtml')!;
+                    const filename = res.href.startsWith('xhtml/') ? res.href.replace(/^xhtml\//, '') : res.href;
+                    xhtmlFolder.file(filename, content);
+                }
+            } else if (res.href.startsWith('images/')) {
                 // Images go to EPUB/images/
                 epub.file(res.href, content);
-            } else if (res.href.endsWith('.xhtml') &&
-                       res.href !== 'cover.xhtml' &&
-                       res.href !== 'Copyright.xhtml') {
-                // Chapter XHTML files go to EPUB/xhtml/ subdirectory
-                const xhtmlFolder = epub.folder('xhtml')!;
-                xhtmlFolder.file(res.href, content);
+            } else if (res.href === 'style.css' || res.href === 'css/cover.css' || res.href.endsWith('/cover.css')) {
+                if (res.href !== 'css/cover.css') {
+                    logger.warn(`CSS resource path mismatch: expected css/cover.css but got ${res.href}`);
+                }
+                const cssFolder = epub.folder('css')!;
+                cssFolder.file('cover.css', content);
             } else {
                 // cover.xhtml, Copyright.xhtml, style.css, nav.xhtml go to EPUB root
                 epub.file(res.href, content);
@@ -47,7 +57,7 @@ export class EpubGenerator {
 
         // 5. Navigation Documents
         const navGen = new NavGenerator();
-        const navHtml = navGen.generateNav(pkg.toc);
+        const navHtml = navGen.generateNav(pkg.toc, pkg.metadata.title);
         const ncx = navGen.generateNcx(pkg.toc, pkg.metadata.identifier, pkg.metadata.title);
 
         epub.file('nav.xhtml', navHtml);
@@ -57,7 +67,12 @@ export class EpubGenerator {
         const manifestGen = new ManifestGenerator();
         epub.file('package.opf', manifestGen.generate(pkg));
 
-        // Generate Blob
-        return await zip.generateAsync({ type: 'blob', mimeType: 'application/epub+zip' });
+        // Generate Blob with DEFLATE compression to match Go version size
+        return await zip.generateAsync({ 
+            type: 'blob', 
+            mimeType: 'application/epub+zip',
+            compression: 'DEFLATE',
+            compressionOptions: { level: 9 }
+        });
     }
 }

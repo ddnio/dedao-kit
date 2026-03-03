@@ -2,11 +2,21 @@ import { httpClient } from './http.ts';
 import { EbookMetadata } from '../../types/ebook.ts';
 import { TokenResponse, BookInfoResponse, ApiResponse, ChapterPagesResponse } from '../../types/api.ts';
 import { logger } from '../../utils/logger.ts';
+import { apiCache, generateCacheKey } from '../../utils/cache.ts';
 
 export class EbookAPI {
     private static readonly BASE_URL = 'https://www.dedao.cn';
 
     async getEbookDetail(enid: string): Promise<any> {
+        const cacheKey = generateCacheKey('getEbookDetail', { enid });
+
+        // Check cache first
+        const cached = apiCache.get(cacheKey);
+        if (cached) {
+            logger.debug(`Using cached ebook detail for: ${enid}`);
+            return cached;
+        }
+
         const url = `${EbookAPI.BASE_URL}/pc/ebook2/v1/pc/detail?id=${enid}`;
         logger.debug(`Fetching ebook detail for: ${enid}`);
 
@@ -17,13 +27,24 @@ export class EbookAPI {
             throw new Error(`Failed to get ebook detail: ${errorMsg}`);
         }
 
+        // Cache the result
+        apiCache.set(cacheKey, response.c);
         return response.c;
     }
 
     async getReadToken(enid: string): Promise<string> {
+        const cacheKey = generateCacheKey('getReadToken', { enid });
+
+        // Check cache first
+        const cached = apiCache.get(cacheKey);
+        if (cached) {
+            logger.debug(`Using cached read token for: ${enid}`);
+            return cached;
+        }
+
         const url = `${EbookAPI.BASE_URL}/api/pc/ebook2/v1/pc/read/token`;
         logger.debug(`Fetching read token for book: ${enid}`);
-        
+
         const response = await httpClient.post<ApiResponse<TokenResponse>>(url, {
             id: enid
         });
@@ -34,10 +55,21 @@ export class EbookAPI {
             throw new Error(`Failed to get read token: ${errorMsg}`);
         }
 
+        // Cache the result
+        apiCache.set(cacheKey, response.c.token);
         return response.c.token;
     }
 
     async getBookInfo(token: string): Promise<EbookMetadata> {
+        const cacheKey = generateCacheKey('getBookInfo', { token });
+
+        // Check cache first
+        const cached = apiCache.get(cacheKey);
+        if (cached) {
+            logger.debug('Using cached book info');
+            return cached;
+        }
+
         const url = `${EbookAPI.BASE_URL}/ebk_web/v1/get_book_info?token=${token}`;
         logger.debug('Fetching book info');
 
@@ -49,11 +81,11 @@ export class EbookAPI {
         }
 
         const info = response.c.bookInfo;
-        
+
         // Transform API response to our internal model
-        return {
-            id: '', 
-            enid: '', 
+        const result: EbookMetadata = {
+            id: '',
+            enid: '',
             title: info.title,
             author: info.author,
             description: info.intro,
@@ -74,15 +106,28 @@ export class EbookAPI {
                 id: ''
             }))
         };
+
+        // Cache the result
+        apiCache.set(cacheKey, result);
+        return result;
     }
 
     async getChapterPages(
-        chapterId: string, 
-        token: string, 
+        chapterId: string,
+        token: string,
         index: number
     ): Promise<ChapterPagesResponse> {
+        const cacheKey = generateCacheKey('getChapterPages', { chapterId, token, index });
+
+        // Check cache first
+        const cached = apiCache.get(cacheKey);
+        if (cached) {
+            logger.debug(`Using cached chapter pages for: ${chapterId}, index: ${index}`);
+            return cached;
+        }
+
         const url = `${EbookAPI.BASE_URL}/ebk_web_go/v2/get_pages`;
-        
+
         const config = {
             "density": 2,
             "direction": 0,
@@ -115,6 +160,8 @@ export class EbookAPI {
             throw new Error(`Failed to get chapter pages: ${errorMsg}`);
         }
 
+        // Cache the result
+        apiCache.set(cacheKey, response.c);
         return response.c;
     }
 }

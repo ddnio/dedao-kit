@@ -2,19 +2,20 @@ import { NavPoint } from '../../types/epub.ts';
 import { escapeXml } from './utils.ts';
 
 export class NavGenerator {
-    generateNav(toc: NavPoint[]): string {
-        return `<?xml version="1.0" encoding="utf-8"?>
+    generateNav(toc: NavPoint[], title: string): string {
+        return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
 <head>
-    <title>Table of Contents</title>
+  <title>${escapeXml(title)}</title>
 </head>
 <body>
-    <nav epub:type="toc" id="toc">
-        <h1>Table of Contents</h1>
-        <ol>
-            ${this.renderNavItems(toc)}
-        </ol>
-    </nav>
+  <nav epub:type="toc">
+    <h1>Table of Contents</h1>
+    <ol>
+      ${this.renderNavItems(toc).trim()}
+    </ol>
+  </nav>
 </body>
 </html>`;
     }
@@ -23,19 +24,18 @@ export class NavGenerator {
         return items.map(item => {
             const normalizedHref = this.normalizeHref(item.contentSrc);
             return `
-            <li>
-                <a href="${normalizedHref}">${escapeXml(item.label)}</a>
-                ${item.children && item.children.length > 0 ? `<ol>${this.renderNavItems(item.children)}</ol>` : ''}
-            </li>
-        `;
+      <li>
+        <a href="${normalizedHref}">${escapeXml(item.label)}</a>
+        ${item.children && item.children.length > 0 ? `<ol>${this.renderNavItems(item.children)}</ol>` : ''}
+      </li>`;
         }).join('');
     }
 
     /**
      * Normalize href to correct relative path for EPUB structure:
      * - Remove editor-generated markers (_sigil_toc_id_, _magic_)
-     * - Ensure .xhtml extension
-     * - Add xhtml/ prefix for chapter files (except cover.xhtml, Copyright.xhtml)
+     * - 保留来源扩展名（不强制追加 .xhtml，以匹配 Go 产物）
+     * - 为章节类文件追加 xhtml/ 前缀（nav.xhtml 仍在根目录）
      * - Return path relative to nav.xhtml (which is at EPUB/ root)
      */
     private normalizeHref(href: string): string {
@@ -46,17 +46,8 @@ export class NavGenerator {
             .replace(/_sigil_toc_id_\d+/g, '')
             .replace(/_magic_[^/]*/g, '');
 
-        // Step 2: Ensure .xhtml extension
-        if (!normalized.endsWith('.xhtml')) {
-            normalized = normalized + '.xhtml';
-        }
-
-        // Step 3: Add xhtml/ prefix for chapter files
-        // Exception: cover.xhtml, Copyright.xhtml should not have prefix
-        // They are at EPUB/ root (nav.xhtml is also at root, so no prefix needed)
+        // Step 2: Add xhtml/ prefix for chapter files (nav stays at root)
         if (!normalized.startsWith('xhtml/') &&
-            normalized !== 'cover.xhtml' &&
-            normalized !== 'Copyright.xhtml' &&
             normalized !== 'nav.xhtml') {
             normalized = 'xhtml/' + normalized;
         }
@@ -70,18 +61,18 @@ export class NavGenerator {
 
         return `<?xml version="1.0" encoding="UTF-8"?>
 <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
-    <head>
-        <meta name="dtb:uid" content="${escapeXml(identifier)}"/>
-        <meta name="dtb:depth" content="3"/>
-        <meta name="dtb:totalPageCount" content="0"/>
-        <meta name="dtb:maxPageNumber" content="0"/>
-    </head>
-    <docTitle>
-        <text>${escapeXml(title)}</text>
-    </docTitle>
-    <navMap>
-        ${navMapContent.points}
-    </navMap>
+  <head>
+    <meta name="dtb:uid" content="${escapeXml(identifier)}"/>
+    <meta name="dtb:depth" content="3"/>
+    <meta name="dtb:totalPageCount" content="0"/>
+    <meta name="dtb:maxPageNumber" content="0"/>
+  </head>
+  <docTitle>
+    <text>${escapeXml(title)}</text>
+  </docTitle>
+  <navMap>
+    ${navMapContent.points.trim()}
+  </navMap>
 </ncx>`;
     }
 
@@ -97,12 +88,11 @@ export class NavGenerator {
             const normalizedHref = this.normalizeHref(item.contentSrc);
 
             html += `
-        <navPoint id="${escapeXml(item.id)}" playOrder="${playOrder}">
-            <navLabel>
-                <text>${escapeXml(item.label)}</text>
-            </navLabel>
-            <content src="${normalizedHref}"/>
-`;
+    <navPoint id="${escapeXml(item.id)}" playOrder="${playOrder}">
+      <navLabel>
+        <text>${escapeXml(item.label)}</text>
+      </navLabel>
+      <content src="${normalizedHref}"/>`;
 
             if (item.children && item.children.length > 0) {
                 const childResult = this.renderNcxPoints(item.children, playOrder + 1);
@@ -110,7 +100,8 @@ export class NavGenerator {
                 playOrder = childResult.nextPlayOrder;
             }
 
-            html += `        </navPoint>\n`;
+            html += `
+    </navPoint>`;
             playOrder++;
         }
 
