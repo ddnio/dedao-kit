@@ -29,6 +29,14 @@ npx ts-node --require esbuild-register scripts/manual-test.ts <bookId> <enid>
 
 ```
 src/
+├── content/                      # Content Script（页面注入）
+│   ├── content-script.ts         # 入口：初始化 PageDownloadController
+│   ├── book-context.ts           # URL 解析提取 enid
+│   ├── read-button-locator.ts    # 定位"开始阅读"按钮（多策略）
+│   ├── download-button-ui.ts     # 下载按钮 UI（四状态 + CSS 进度条）
+│   └── page-download-controller.ts # 编排器：DOM 监听、下载协调
+├── popup/                        # Popup UI
+│   └── popup.ts                  # 扩展图标弹窗逻辑
 ├── services/
 │   ├── download/manager.ts       # 核心编排层（~550 行）
 │   ├── api/{http,ebook}.ts       # HTTP 客户端 + 4 个 dedao 接口
@@ -38,6 +46,17 @@ src/
 ├── types/                        # 类型定义（api/ebook/epub/download）
 └── utils/{cache,logger,errors}.ts
 ```
+
+**Content Script 架构：**
+- `PageDownloadController` 在 `/ebook/detail` 页面自动注入"下载 EPUB"按钮
+- 按钮四状态：`idle` → `downloading`（进度条）→ `success`/`error`
+- MutationObserver 监听 SPA 路由变化和 DOM 渲染
+- 下载逻辑完全内嵌在 content script，无需 background service worker
+
+**构建配置要点：**
+- popup 用 ES 模块格式（在隔离环境运行）
+- content script 用 IIFE 格式（`inlineDynamicImports: true`），完全自包含
+- 原因：Chrome content script 对 ES module 支持存在兼容性问题，IIFE 格式最可靠
 
 **数据流：**
 `startDownload(bookId, enid)` → API 获取元数据 → 逐章下载 SVG 页面 → AES 解密 → SVG→HTML 转换 → 全局图片处理 → EpubGenerator 打包 → `Blob`
