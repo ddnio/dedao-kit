@@ -92,7 +92,7 @@ export class PageDownloadController {
         if (!this.ui) {
             this.ui = new DownloadButtonUI({ onClick: () => void this.handleClick() });
         }
-        this.ui.mountNextTo(location.readButton);
+        this.ui.mountNextTo(location.readButton, location.container);
     }
 
     private async handleClick(): Promise<void> {
