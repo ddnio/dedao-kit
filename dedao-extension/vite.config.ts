@@ -35,9 +35,10 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: 'dist',
       emptyOutDir: true,
-      rollupOptions: {
-        input: {
+        rollupOptions: {
+          input: {
           popup: path.resolve(__dirname, 'src/popup/popup.ts'),
+          background: path.resolve(__dirname, 'src/background/background.ts'),
         },
         output: {
           entryFileNames: 'assets/[name].js',

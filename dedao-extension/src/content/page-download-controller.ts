@@ -1,5 +1,7 @@
 import { DownloadManager } from '../services/download/manager.ts';
-import { getBookContextFromPage } from './book-context.ts';
+import { captureCourseArticleImage } from './article-capture-session.ts';
+import { ArticleSideButtonUI } from './article-side-button-ui.ts';
+import { getBookContextFromPage, getPageContextFromPage } from './book-context.ts';
 import { locateReadButton } from './read-button-locator.ts';
 import { DownloadButtonUI, BUTTON_ID } from './download-button-ui.ts';
 
@@ -10,6 +12,7 @@ const DEBOUNCE_MS = 150;
  */
 export class PageDownloadController {
     private ui: DownloadButtonUI | null = null;
+    private articleUi: ArticleSideButtonUI | null = null;
     private observer: MutationObserver | null = null;
     private debounceTimer: number | null = null;
     private downloading = false;
@@ -34,6 +37,8 @@ export class PageDownloadController {
         window.removeEventListener('hashchange', this.handleNavigation);
         this.ui?.destroy();
         this.ui = null;
+        this.articleUi?.destroy();
+        this.articleUi = null;
     }
 
     /**
@@ -49,6 +54,8 @@ export class PageDownloadController {
         // 路由变化后重置注入状态（URL 可能已离开详情页）
         this.ui?.destroy();
         this.ui = null;
+        this.articleUi?.destroy();
+        this.articleUi = null;
         this.scheduleInject();
     };
 
@@ -69,9 +76,26 @@ export class PageDownloadController {
 
     private tryInject(): void {
         // 仅在详情页注入
-        const ctx = getBookContextFromPage();
+        const pageCtx = getPageContextFromPage();
+        if (!pageCtx) {
+            if (this.ui) {
+                this.ui.destroy();
+                this.ui = null;
+            }
+            if (this.articleUi) {
+                this.articleUi.destroy();
+                this.articleUi = null;
+            }
+            return;
+        }
+
+        if (pageCtx.pageType === 'course-article') {
+            this.tryInjectArticleButton();
+            return;
+        }
+
+        const ctx = pageCtx;
         if (!ctx) {
-            // 离开详情页，移除按钮
             if (this.ui) {
                 this.ui.destroy();
                 this.ui = null;
@@ -93,6 +117,19 @@ export class PageDownloadController {
             this.ui = new DownloadButtonUI({ onClick: () => void this.handleClick() });
         }
         this.ui.mountNextTo(location.readButton, location.container);
+    }
+
+    private tryInjectArticleButton(): void {
+        this.ui?.destroy();
+        this.ui = null;
+
+        const sideRail = document.querySelector<HTMLElement>('aside.iget-side-button.iget-side-portrait');
+        if (!sideRail) return;
+
+        if (!this.articleUi) {
+            this.articleUi = new ArticleSideButtonUI({ onClick: () => void this.handleArticleCapture() });
+        }
+        this.articleUi.mount(sideRail);
     }
 
     private async handleClick(): Promise<void> {
@@ -119,6 +156,36 @@ export class PageDownloadController {
         } catch (err) {
             const msg = err instanceof Error ? err.message : '未知错误，请重试';
             this.ui?.setError(msg);
+        } finally {
+            this.downloading = false;
+        }
+    }
+
+    private async handleArticleCapture(): Promise<void> {
+        if (this.downloading) return;
+
+        const ctx = getPageContextFromPage();
+        if (!ctx || ctx.pageType !== 'course-article') {
+            this.articleUi?.setError('未识别到文章内容');
+            return;
+        }
+
+        this.downloading = true;
+
+        try {
+            const { blob, filename } = await captureCourseArticleImage(ctx, ({ phase, percent }) => {
+                if (phase === 'capturing') {
+                    this.articleUi?.setCapturingProgress(percent);
+                    return;
+                }
+                this.articleUi?.setStitching();
+            });
+            this.saveBlob(blob, filename);
+            this.articleUi?.setSuccess();
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : '未知错误，请重试';
+            console.error('[Dedao course capture] capture failed:', err);
+            this.articleUi?.setError(msg);
         } finally {
             this.downloading = false;
         }
