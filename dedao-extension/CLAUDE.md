@@ -4,7 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-这是一个**TypeScript Chrome 浏览器插件**，用于将得到 APP 中的电子书下载为标准 EPUB 3.0 文件。插件在浏览器中运行，直接调用得到的 Web API，对加密 SVG 内容解密后转换为 EPUB。
+这是一个**TypeScript Chrome 浏览器插件**，当前支持两类能力：
+
+- 将得到 Web 端电子书下载为标准 EPUB 3.0 文件
+- 将得到课程文章详情页导出为长图 PNG
+
+插件在浏览器中运行。电子书链路直接调用得到 Web API，对加密 SVG 内容解密后转换为 EPUB；课程文章链路则通过 content script + background service worker 调用浏览器截图能力，自动滚动并拼接长图。
 
 Go 项目 `dedao-dl`（[github.com/yann0917/dedao-dl](https://github.com/yann0917/dedao-dl)）是**技术参考**，用于对齐 EPUB 输出的结构和格式。`../specs/002-align-epub-format/fixtures/reference.epub` 是由 Go 版生成的参考文件，**本项目以此为正确性基准**。当 TS 版与 Go 版输出存在结构差异时，应以 Go 版为准进行修复。
 
@@ -29,9 +34,13 @@ npx ts-node --require esbuild-register scripts/manual-test.ts <bookId> <enid>
 
 ```
 src/
+├── background/                   # background service worker
+│   └── background.ts             # 调用 chrome.tabs.captureVisibleTab
 ├── content/                      # Content Script（页面注入）
 │   ├── content-script.ts         # 入口：初始化 PageDownloadController
-│   ├── book-context.ts           # URL 解析提取 enid
+│   ├── book-context.ts           # 页面上下文识别（ebook / course article）
+│   ├── article-capture-session.ts # 课程文章长图：滚动、截图、拼接
+│   ├── article-side-button-ui.ts # 课程文章右侧“下长图”按钮
 │   ├── read-button-locator.ts    # 定位"开始阅读"按钮（多策略）
 │   ├── download-button-ui.ts     # 下载按钮 UI（四状态 + CSS 进度条）
 │   └── page-download-controller.ts # 编排器：DOM 监听、下载协调
@@ -48,18 +57,25 @@ src/
 ```
 
 **Content Script 架构：**
-- `PageDownloadController` 在 `/ebook/detail` 页面自动注入"下载 EPUB"按钮
-- 按钮四状态：`idle` → `downloading`（进度条）→ `success`/`error`
+- `PageDownloadController` 在不同页面走两条分支：
+  - `/ebook/detail`：自动注入“下载 EPUB”按钮
+  - `/course/article`：在原生右侧侧边栏注入“下长图”按钮
+- 电子书按钮状态：`idle` → `downloading`（进度条）→ `success`/`error`
+- 课程文章按钮状态：`idle` → `capturing` → `stitching` → `success`/`error`
 - MutationObserver 监听 SPA 路由变化和 DOM 渲染
-- 下载逻辑完全内嵌在 content script，无需 background service worker
+- 电子书下载逻辑完全内嵌在 content script
+- 课程文章长图依赖 background service worker 截图，content script 负责滚动、裁切和拼接
 
 **构建配置要点：**
-- popup 用 ES 模块格式（在隔离环境运行）
+- popup 和 background 用 ES 模块格式
 - content script 用 IIFE 格式（`inlineDynamicImports: true`），完全自包含
 - 原因：Chrome content script 对 ES module 支持存在兼容性问题，IIFE 格式最可靠
 
 **数据流：**
 `startDownload(bookId, enid)` → API 获取元数据 → 逐章下载 SVG 页面 → AES 解密 → SVG→HTML 转换 → 全局图片处理 → EpubGenerator 打包 → `Blob`
+
+**课程文章长图数据流：**
+`PageDownloadController.handleArticleCapture()` → `getPageContextFromPage()` → `captureCourseArticleImage()` → 自动滚动页面 → background `captureVisibleTab` → 前端裁切/拼接 → `Blob`
 
 **SVG 转换关键约定（`complex-converter.ts`）：**
 - 页面元素按 Y 坐标分组为"行"，逐行生成 `<p>` 或 `<div class="header{N}">`
@@ -81,6 +97,13 @@ src/
 1. **`npm test` 全绿**：全套测试零失败，无新增 skip
 2. **`npm run test:epub` 通过**：功能测试三层验证全部通过（见下方）
 3. **结构对比无新增差异**：运行 `npm run compare gen_latest.epub`，对比 Go 参考 EPUB，不得引入新的结构差异
+
+如果修改的是课程文章长图功能，至少补充并运行以下测试：
+
+- `src/content/__tests__/book-context.test.ts`
+- `src/content/__tests__/article-side-button-ui.test.ts`
+- `src/content/__tests__/article-capture-session.test.ts`
+- `src/content/__tests__/manifest-permissions.test.ts`
 
 ### 功能测试三层验证（`tests/functional/epub-generation.test.ts`）
 
