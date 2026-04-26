@@ -23,6 +23,26 @@
 - `go test ./...` is the broader command you should run before merging Go-side changes; helper tests live under `dedao-dl/utils` and `dedao-dl/services`.
 - `npm test` (Jest) runs the extension’s unit and snapshot tests; keep fixtures in `tests/` and name them to describe the behavior (`*.test.ts`).
 
+## Branch & Worktree Workflow
+
+新功能开发**必须**走 worktree 流程，不在主 checkout 上直接 checkout 新分支：
+
+1. 在仓库根 `~/project/github/dedao-kit/` 之外建立 worktree：
+   ```bash
+   git worktree add ../dedao-kit-<feature-slug> -b <feature-branch>
+   ```
+2. 在新 worktree 内开发、`npm test`、`npm run compare` 验证通过。
+3. 验证通过后才合并到 `main`：
+   ```bash
+   cd ~/project/github/dedao-kit
+   git checkout main && git pull
+   git merge --no-ff <feature-branch>
+   git push origin main
+   ```
+4. 删除 worktree：`git worktree remove ../dedao-kit-<feature-slug>`
+
+**禁止**：在主 checkout 上直接 `git checkout -b` 开发新功能；直接 push 未验证的代码到 `main`。
+
 ## Commit & Pull Request Guidelines
 - Follow a conventional prefix (e.g., `feat:`, `fix:`, `docs:`, `AI:`) and keep the subject concise; mention related issues (e.g., `fix: match EPUB image diff (#123)`).
 - Pull requests should describe the change, note the commands you ran (especially tests), and link to relevant issues or specs; attach screenshots or sample EPUB outputs when UI/formatting adjustments occur.

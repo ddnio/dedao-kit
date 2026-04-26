@@ -102,7 +102,7 @@ Go 侧（仅在需要核对参考行为时）：`cd dedao-dl && make build` / `m
 ## 文档分工
 
 - `dedao-extension/CLAUDE.md` — 子项目的架构、SVG 转换状态机、图片编号规则、测试三层验证、缓存 key 规则。**改 TS 代码前必读**。
-- `AGENTS.md`（根） — 跨项目的代码风格、commit 规范（conventional prefix：`feat:`/`fix:`/`docs:`/`AI:` 等）。
+- `AGENTS.md`（根） — 跨项目的代码风格、commit 规范（conventional prefix：`feat:`/`fix:`/`docs:`/`AI:` 等）。**含 Branch & Worktree Workflow，新功能必读**。
 - `dedao-extension/README.md` — 终端用户安装/使用说明。
 - `dedao-dl/README.md` — Go CLI 用法。
 
