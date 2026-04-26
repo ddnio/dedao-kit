@@ -99,6 +99,28 @@ Go 侧（仅在需要核对参考行为时）：`cd dedao-dl && make build` / `m
 - **测试不能联网**：`tests/functional/` 用 `dedao-extension/.cache/` 中 44 个 MD5-keyed JSON 回放 API。新增 API 调用前先确认 `isDedaoApiUrl` 白名单与 `manual-test.ts` 的 `shouldCacheUrl` 同步，否则测试会真实发网络请求。
 - **Content script 构建格式**：popup/background 为 ES module，content script 为 IIFE（`inlineDynamicImports: true`）。这是已踩过坑的决定，不要改回 ES module。
 
+## 分支与 Worktree 工作流
+
+**新功能开发必须用 git worktree 隔离，验证通过才合 main**（用户 2026-04-26 明确要求；详见根 `AGENTS.md` 的 "Branch & Worktree Workflow" 章节）。
+
+```bash
+# 1. 开 worktree（与主仓库平级）
+git worktree add ../dedao-kit-<feature-slug> -b <feature-branch>
+
+# 2. 在 worktree 内开发 + 验证（必须全过）
+cd ../dedao-kit-<feature-slug>/dedao-extension
+npm test && npm run compare gen_latest.epub
+
+# 3. 验证通过才合并 main
+git checkout main && git pull
+git merge --no-ff <feature-branch> && git push origin main
+
+# 4. 清理 worktree
+git worktree remove ../dedao-kit-<feature-slug>
+```
+
+触发词："开发新功能"、"开新分支"、"加 X 功能" → 首选 `git worktree add`，**不要**直接 `git checkout -b` 在主 checkout 上动手。
+
 ## 文档分工
 
 - `dedao-extension/CLAUDE.md` — 子项目的架构、SVG 转换状态机、图片编号规则、测试三层验证、缓存 key 规则。**改 TS 代码前必读**。
