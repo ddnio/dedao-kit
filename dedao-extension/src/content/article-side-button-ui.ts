@@ -112,6 +112,11 @@ const ERROR_ICON = `
         <path d="M12.3 3.7A5.5 5.5 0 1 0 13.2 9.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
     </svg>
 `;
+const MENU_ICON = `
+    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" data-icon="menu">
+        <path d="M3 5H13M3 8H13M3 11H13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+    </svg>
+`;
 
 function ensureStyle(): void {
     if (document.getElementById(STYLE_ID)) return;
@@ -176,7 +181,7 @@ export class ArticleSideButtonUI {
         }
         this.wrapper.appendChild(this.menu);
 
-        this.render('idle', '导出', false);
+        this.render('idle', '小助手', false);
     }
 
     mount(container: HTMLElement): void {
@@ -217,7 +222,7 @@ export class ArticleSideButtonUI {
         this.render('success', label, false);
         this.resetTimer = window.setTimeout(() => {
             this.resetTimer = null;
-            this.render('idle', '导出', false);
+            this.render('idle', '小助手', false);
         }, 2000);
     }
 
@@ -227,7 +232,7 @@ export class ArticleSideButtonUI {
         this.render('error', label, false);
         this.resetTimer = window.setTimeout(() => {
             this.resetTimer = null;
-            this.render('idle', '导出', false);
+            this.render('idle', '小助手', false);
         }, 3000);
     }
 
@@ -269,7 +274,8 @@ export class ArticleSideButtonUI {
     private getIconMarkup(state: string): string {
         if (state === 'success') return SUCCESS_ICON;
         if (state === 'error') return ERROR_ICON;
-        return DOWNLOAD_ICON;
+        if (state === 'capturing') return DOWNLOAD_ICON;
+        return MENU_ICON;
     }
 
     private clearResetTimer(): void {
