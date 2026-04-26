@@ -348,5 +348,5 @@ function hasBlockChildren(el: HTMLElement): boolean {
 function escapeMd(text: string): string {
     return text
         .replace(/\\/g, '\\\\')
-        .replace(/([*_`\[\]()#>|])/g, '\\$1');
+        .replace(/([*_`\[\]()#|])/g, '\\$1');
 }

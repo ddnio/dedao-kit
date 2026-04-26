@@ -132,6 +132,21 @@ describe('extractCourseArticleMarkdown', () => {
         expect(md).toContain('\\#井号');
     });
 
+    it('does not escape > inside inline text (no syntax ambiguity)', () => {
+        const ctx = makeCtx('<p>A>B 大于号</p>');
+        const md = extractCourseArticleMarkdown(ctx);
+        expect(md).toContain('A>B 大于号');
+        expect(md).not.toContain('\\>');
+    });
+
+    it('list item with only nested list emits empty marker (known acceptable behavior)', () => {
+        const ctx = makeCtx('<ul><li><ul><li>nested</li></ul></li></ul>');
+        const md = extractCourseArticleMarkdown(ctx);
+        // 当前行为：外层 li 无文本时输出空 marker，子 list 4 空格缩进
+        expect(md).toMatch(/^- \n/m);
+        expect(md).toMatch(/\n {4}- nested/);
+    });
+
     it('skips UI-control aside (展开目录)', () => {
         const ctx = makeCtx('<aside>展开目录</aside><p>正文</p>');
         const md = extractCourseArticleMarkdown(ctx);
