@@ -1,9 +1,25 @@
 import { DownloadManager } from '../services/download/manager.ts';
 import { captureCourseArticleImage } from './article-capture-session.ts';
-import { ArticleSideButtonUI } from './article-side-button-ui.ts';
-import { getBookContextFromPage, getPageContextFromPage } from './book-context.ts';
+import { ArticleSideButtonUI, type SideAction } from './article-side-button-ui.ts';
+import { getBookContextFromPage, getPageContextFromPage, type CourseArticlePageContext } from './book-context.ts';
 import { locateReadButton } from './read-button-locator.ts';
 import { DownloadButtonUI, BUTTON_ID } from './download-button-ui.ts';
+import { extractCourseArticleMarkdown } from './article-markdown-extractor.ts';
+import { copyTextToClipboard } from './clipboard.ts';
+
+const ACTION_CAPTURE = 'capture';
+const ACTION_MD_DOWNLOAD = 'md-download';
+const ACTION_MD_COPY = 'md-copy';
+
+const ICON_IMAGE = `<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2" y="3" width="12" height="10" rx="1.5" stroke="currentColor" stroke-width="1.4"/><circle cx="6" cy="7" r="1" fill="currentColor"/><path d="M3 12L6.5 8.5L9 11L11 9L13 12" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>`;
+const ICON_MD = `<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="1.5" y="3.5" width="13" height="9" rx="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M4 10V6L6 8.5L8 6V10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M11 6V10M9.5 8.5L11 10L12.5 8.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const ICON_COPY = `<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="3" y="2.5" width="8" height="9" rx="1.2" stroke="currentColor" stroke-width="1.4"/><rect x="5.5" y="5" width="8" height="9" rx="1.2" stroke="currentColor" stroke-width="1.4"/></svg>`;
+
+const ARTICLE_ACTIONS: SideAction[] = [
+    { id: ACTION_CAPTURE, label: '下载长图', iconSvg: ICON_IMAGE },
+    { id: ACTION_MD_DOWNLOAD, label: '下载 Markdown', iconSvg: ICON_MD },
+    { id: ACTION_MD_COPY, label: '复制 Markdown', iconSvg: ICON_COPY },
+];
 
 const DEBOUNCE_MS = 150;
 
@@ -16,6 +32,7 @@ export class PageDownloadController {
     private observer: MutationObserver | null = null;
     private debounceTimer: number | null = null;
     private downloading = false;
+    private busyAction: typeof ACTION_CAPTURE | typeof ACTION_MD_DOWNLOAD | typeof ACTION_MD_COPY | null = null;
 
     start(): void {
         this.tryInject();
@@ -127,9 +144,24 @@ export class PageDownloadController {
         if (!sideRail) return;
 
         if (!this.articleUi) {
-            this.articleUi = new ArticleSideButtonUI({ onClick: () => void this.handleArticleCapture() });
+            this.articleUi = new ArticleSideButtonUI({
+                actions: ARTICLE_ACTIONS,
+                onSelect: (id) => void this.handleArticleAction(id),
+            });
         }
         this.articleUi.mount(sideRail);
+    }
+
+    private handleArticleAction(id: string): void {
+        if (this.busyAction !== null) return;
+        const ctx = getPageContextFromPage();
+        if (!ctx || ctx.pageType !== 'course-article') {
+            this.articleUi?.setError('未识别到文章内容');
+            return;
+        }
+        if (id === ACTION_CAPTURE) void this.handleArticleCapture(ctx);
+        else if (id === ACTION_MD_DOWNLOAD) void this.handleArticleMarkdownDownload(ctx);
+        else if (id === ACTION_MD_COPY) void this.handleArticleMarkdownCopy(ctx);
     }
 
     private async handleClick(): Promise<void> {
@@ -161,34 +193,71 @@ export class PageDownloadController {
         }
     }
 
-    private async handleArticleCapture(): Promise<void> {
-        if (this.downloading) return;
-
-        const ctx = getPageContextFromPage();
-        if (!ctx || ctx.pageType !== 'course-article') {
-            this.articleUi?.setError('未识别到文章内容');
-            return;
-        }
-
-        this.downloading = true;
-
+    private async handleArticleCapture(ctx: CourseArticlePageContext): Promise<void> {
+        this.busyAction = ACTION_CAPTURE;
+        this.articleUi?.setBusy('准备中');
         try {
             const { blob, filename } = await captureCourseArticleImage(ctx, ({ phase, percent }) => {
                 if (phase === 'capturing') {
-                    this.articleUi?.setCapturingProgress(percent);
-                    return;
+                    this.articleUi?.setProgress(percent, '下长图中');
+                } else {
+                    this.articleUi?.setBusy('拼接中');
                 }
-                this.articleUi?.setStitching();
             });
             this.saveBlob(blob, filename);
-            this.articleUi?.setSuccess();
+            this.articleUi?.setSuccess('长图已下载');
         } catch (err) {
             const msg = err instanceof Error ? err.message : '未知错误，请重试';
             console.error('[Dedao course capture] capture failed:', err);
             this.articleUi?.setError(msg);
         } finally {
-            this.downloading = false;
+            this.busyAction = null;
         }
+    }
+
+    private async handleArticleMarkdownDownload(ctx: CourseArticlePageContext): Promise<void> {
+        this.busyAction = ACTION_MD_DOWNLOAD;
+        this.articleUi?.setBusy('生成中');
+        try {
+            const md = extractCourseArticleMarkdown(ctx);
+            const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+            this.saveBlob(blob, `${this.sanitizeFilename(ctx.title)}.md`);
+            this.articleUi?.setSuccess('Markdown 已下载');
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : '生成失败';
+            console.error('[Dedao md download] failed:', err);
+            this.articleUi?.setError(msg);
+        } finally {
+            this.busyAction = null;
+        }
+    }
+
+    private async handleArticleMarkdownCopy(ctx: CourseArticlePageContext): Promise<void> {
+        this.busyAction = ACTION_MD_COPY;
+        this.articleUi?.setBusy('复制中');
+        try {
+            const md = extractCourseArticleMarkdown(ctx);
+            try {
+                await copyTextToClipboard(md);
+                this.articleUi?.setSuccess('已复制');
+            } catch (err) {
+                console.warn('[Dedao md copy] clipboard failed, falling back to download:', err);
+                const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+                this.saveBlob(blob, `${this.sanitizeFilename(ctx.title)}.md`);
+                this.articleUi?.setSuccess('复制失败，已下载');
+            }
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : '生成失败';
+            console.error('[Dedao md copy] extract failed:', err);
+            this.articleUi?.setError(msg);
+        } finally {
+            this.busyAction = null;
+        }
+    }
+
+    private sanitizeFilename(name: string): string {
+        const safe = (name || 'dedao_article').replace(/[\\/:*?"<>|]/g, '_').trim();
+        return safe || 'dedao_article';
     }
 
     private buildFilename(pkgTitle: string, fallback: string): string {
