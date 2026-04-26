@@ -293,7 +293,7 @@ async function fetchWithRetry(
 
 ## 关键参考
 
-- **Go 参考项目**：`/Users/nio/project/github/dedao-asisstant/dedao-dl/`
+- **Go 参考项目**：`/Users/nio/project/github/dedao-kit/dedao-dl/`
   - `cmd/app/ebook.go` - 电子书下载主逻辑
   - `utils/svg2html.go` - SVG→HTML 转换
   - `utils/html2epub.go` - EPUB 生成

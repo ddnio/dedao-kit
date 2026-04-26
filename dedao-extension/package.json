@@ -1,5 +1,5 @@
 {
-  "name": "dedao-dl",
+  "name": "dedao-kit",
   "version": "1.0.0",
   "description": "> 🦉 《得到》 APP 课程下载工具，扫码或者使用 cookie 登录后，可在终端查看已购买的课程，听书书架，电子书架，锦囊，推荐话题等",
   "main": "index.js",
@@ -14,15 +14,15 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/yann0917/dedao-dl.git"
+    "url": "git+https://github.com/ddnio/dedao-kit.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/yann0917/dedao-dl/issues"
+    "url": "https://github.com/ddnio/dedao-kit/issues"
   },
-  "homepage": "https://github.com/yann0917/dedao-dl#readme",
+  "homepage": "https://github.com/ddnio/dedao-kit#readme",
   "devDependencies": {
     "@types/chrome": "^0.1.32",
     "@types/crypto-js": "^4.2.2",
