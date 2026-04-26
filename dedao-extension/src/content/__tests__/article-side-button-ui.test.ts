@@ -33,8 +33,8 @@ describe('ArticleSideButtonUI', () => {
         const ui = new ArticleSideButtonUI({ actions: ACTIONS, onSelect: jest.fn() });
         ui.mount(aside);
 
-        expect(aside.querySelector('.dd-course-shot-label')?.textContent).toBe('导出');
-        expect(aside.querySelector('.dd-course-shot-button [data-icon="download"]')).not.toBeNull();
+        expect(aside.querySelector('.dd-course-shot-label')?.textContent).toBe('小助手');
+        expect(aside.querySelector('.dd-course-shot-button [data-icon="menu"]')).not.toBeNull();
     });
 
     it('renders one menu item per action', () => {
