@@ -4,12 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-这是一个**TypeScript Chrome 浏览器插件**，当前支持两类能力：
+这是一个**TypeScript Chrome 浏览器插件**，当前支持三类能力：
 
 - 将得到 Web 端电子书下载为标准 EPUB 3.0 文件
 - 将得到课程文章详情页导出为长图 PNG
+- 将得到课程文章详情页导出 / 复制为 Markdown
 
-插件在浏览器中运行。电子书链路直接调用得到 Web API，对加密 SVG 内容解密后转换为 EPUB；课程文章链路则通过 content script + background service worker 调用浏览器截图能力，自动滚动并拼接长图。
+插件在浏览器中运行。电子书链路直接调用得到 Web API，对加密 SVG 内容解密后转换为 EPUB；课程文章长图通过 content script + background service worker 调用浏览器截图能力，自动滚动并拼接；课程文章 Markdown 直接读取页面 DOM 结构提取正文。
 
 Go 项目 `dedao-dl`（[github.com/yann0917/dedao-dl](https://github.com/yann0917/dedao-dl)）是**技术参考**，用于对齐 EPUB 输出的结构和格式。`../specs/002-align-epub-format/fixtures/reference.epub` 是由 Go 版生成的参考文件，**本项目以此为正确性基准**。当 TS 版与 Go 版输出存在结构差异时，应以 Go 版为准进行修复。
 
@@ -40,7 +41,9 @@ src/
 │   ├── content-script.ts         # 入口：初始化 PageDownloadController
 │   ├── book-context.ts           # 页面上下文识别（ebook / course article）
 │   ├── article-capture-session.ts # 课程文章长图：滚动、截图、拼接
-│   ├── article-side-button-ui.ts # 课程文章右侧“下长图”按钮
+│   ├── article-markdown-extractor.ts # 课程文章 DOM → Markdown
+│   ├── article-side-button-ui.ts # 课程文章右侧「小助手」菜单按钮
+│   ├── clipboard.ts              # 剪贴板写入封装（带下载回退）
 │   ├── read-button-locator.ts    # 定位"开始阅读"按钮（多策略）
 │   ├── download-button-ui.ts     # 下载按钮 UI（四状态 + CSS 进度条）
 │   └── page-download-controller.ts # 编排器：DOM 监听、下载协调
@@ -58,13 +61,18 @@ src/
 
 **Content Script 架构：**
 - `PageDownloadController` 在不同页面走两条分支：
-  - `/ebook/detail`：自动注入“下载 EPUB”按钮
-  - `/course/article`：在原生右侧侧边栏注入“下长图”按钮
+  - `/ebook/detail`：自动注入「下载 EPUB」按钮
+  - `/course/article`：在原生右侧侧边栏注入「小助手」菜单按钮
+- 「小助手」菜单包含三个 action（见 `page-download-controller.ts` 中 `ARTICLE_ACTIONS`）：
+  - `capture`：下载长图
+  - `md-download`：下载 Markdown
+  - `md-copy`：复制 Markdown（剪贴板不可用时回退为下载）
 - 电子书按钮状态：`idle` → `downloading`（进度条）→ `success`/`error`
-- 课程文章按钮状态：`idle` → `capturing` → `stitching` → `success`/`error`
+- 课程文章按钮状态：`idle` → `capturing`（带阶段文案：下长图中 / 复制中 / 拼接中）→ `success`/`error`，2-3s 后自动恢复
 - MutationObserver 监听 SPA 路由变化和 DOM 渲染
 - 电子书下载逻辑完全内嵌在 content script
 - 课程文章长图依赖 background service worker 截图，content script 负责滚动、裁切和拼接
+- 课程文章 Markdown 直接读取 DOM，由 `article-markdown-extractor.ts` 输出
 
 **构建配置要点：**
 - popup 和 background 用 ES 模块格式
@@ -76,6 +84,11 @@ src/
 
 **课程文章长图数据流：**
 `PageDownloadController.handleArticleCapture()` → `getPageContextFromPage()` → `captureCourseArticleImage()` → 自动滚动页面 → background `captureVisibleTab` → 前端裁切/拼接 → `Blob`
+
+**课程文章 Markdown 数据流：**
+`PageDownloadController.handleArticleMarkdown(action)` → `extractCourseArticleMarkdown()` 读取页面 DOM → 生成 Markdown 字符串 →
+- `md-download`：包成 `Blob('text/markdown;charset=utf-8')` 触发下载
+- `md-copy`：通过 `clipboard.ts` 写入剪贴板，失败回退为下载
 
 **SVG 转换关键约定（`complex-converter.ts`）：**
 - 页面元素按 Y 坐标分组为"行"，逐行生成 `<p>` 或 `<div class="header{N}">`
@@ -98,11 +111,12 @@ src/
 2. **`npm run test:epub` 通过**：功能测试三层验证全部通过（见下方）
 3. **结构对比无新增差异**：运行 `npm run compare gen_latest.epub`，对比 Go 参考 EPUB，不得引入新的结构差异
 
-如果修改的是课程文章长图功能，至少补充并运行以下测试：
+如果修改的是课程文章相关功能（长图 / Markdown / 「小助手」菜单），至少补充并运行以下测试：
 
 - `src/content/__tests__/book-context.test.ts`
 - `src/content/__tests__/article-side-button-ui.test.ts`
 - `src/content/__tests__/article-capture-session.test.ts`
+- `src/content/__tests__/article-markdown-extractor.test.ts`
 - `src/content/__tests__/manifest-permissions.test.ts`
 
 ### 功能测试三层验证（`tests/functional/epub-generation.test.ts`）
